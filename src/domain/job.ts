@@ -65,12 +65,16 @@ export const profileSchema = z.object({
 })
 export type Profile = z.infer<typeof profileSchema>
 
-/** Tier-3 LLM fit review. Zod-validated; anything malformed is discarded, never shown. */
+/**
+ * Tier-3 LLM fit review. Zod-validated; anything malformed is discarded, never
+ * shown. NOTE: every field is required (no .default()) — OpenAI strict
+ * structured-output rejects schemas whose properties are not all in `required`.
+ */
 export const matchReviewSchema = z.object({
   match: z.boolean(),
   fitScore: z.number().int().min(0).max(100),
   whyThisFits: z.array(z.string()).min(1).max(4),
-  redFlags: z.array(z.string()).max(4).default([]),
-  questions: z.array(z.string()).max(3).default([]),
+  redFlags: z.array(z.string()).max(4),
+  questions: z.array(z.string()).max(3),
 })
 export type MatchReview = z.infer<typeof matchReviewSchema>

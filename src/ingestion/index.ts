@@ -1,4 +1,5 @@
 import { defaultBoardsPath, loadBoardsFromFile, type AtsName, type Board } from '../config/boards.js'
+import { env } from '../config/env.js'
 import type { RawJob } from '../domain/job.js'
 import { logger } from '../log.js'
 import { extractJobStructured } from '../pipeline/extract.js'
@@ -94,9 +95,9 @@ export async function runIngestion(
 
   // LLM enrichment drains a BACKLOG (jobs still missing embeddings), not just
   // this run's new rows — the first ingest of 40 boards yields thousands of
-  // jobs and catches up across runs. Degrades to rules-only when no key or
-  // budget is exhausted.
-  const cap = opts.maxEnrich ?? 40
+  // jobs and catches up across runs (MAX_ENRICH_PER_RUN controls the pace).
+  // Degrades to rules-only when no key or budget is exhausted.
+  const cap = opts.maxEnrich ?? env.MAX_ENRICH_PER_RUN
   let enriched = 0
   while (enriched < cap) {
     const batch = await jobsMissingEmbedding(Math.min(10, cap - enriched))

@@ -21,6 +21,13 @@ import { fallbackReview, reviewFit } from './tier3-review.js'
 const CANDIDATE_WINDOW_DAYS = 7
 const NO_RESEND_DAYS = 14
 const TIER2_TOP_K = 5
+/**
+ * Tier 2 RANKS; tier 3 GATES. With short profiles vs long job descriptions,
+ * text-embedding similarities for genuinely related content land ~0.4–0.6, so
+ * an absolute cutoff here would starve tier 3 — this floor only guards against
+ * pure garbage. The subscriber threshold applies to the no-LLM fallback path.
+ */
+const TIER2_FLOOR = 0.3
 /** Without an LLM review, tier-2 evidence must clear a higher bar before delivery. */
 const FALLBACK_EXTRA_MARGIN = 0.05
 
@@ -111,7 +118,7 @@ async function runForSubscriber(
   }
 
   const ranked: Array<{ job: JobLite; simScore: number }> = embedding
-    ? tier2Rank(embedding, filtered, { threshold: sub.matchThreshold, k: TIER2_TOP_K })
+    ? tier2Rank(embedding, filtered, { threshold: TIER2_FLOOR, k: TIER2_TOP_K })
     : []
 
   if (ranked.length === 0) return

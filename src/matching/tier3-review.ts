@@ -1,6 +1,7 @@
 import { matchReviewSchema, type MatchReview, type Profile } from '../domain/job.js'
 import { truncate } from '../pipeline/html.js'
 import { generateJson, LlmUnavailableError } from '../llm.js'
+import { logger } from '../log.js'
 import { INJECTION_GUARD_SYSTEM, dataBlock } from '../security/prompts.js'
 
 /**
@@ -67,6 +68,7 @@ Decide: is this job worth this person's attention given their confirmed profile?
     return sanitizeReview(review)
   } catch (err) {
     if (err instanceof LlmUnavailableError) return null
+    logger.warn('tier3_review_failed', { error: String(err).slice(0, 300) })
     return null // malformed or failed generation → discarded, never shown
   }
 }

@@ -37,8 +37,10 @@ const envSchema = z.object({
   CHAT_MODEL: z.string().optional(),
   EMBEDDING_MODEL: z.string().default('text-embedding-3-small'),
   DAILY_LLM_BUDGET_CENTS: z.coerce.number().int().min(0).default(500),
-  /** Conservative cost estimate for budget accounting (default over-estimates, which is the safe side). */
+  /** Cost estimate for budget accounting (default over-estimates, which is the safe side). */
   LLM_CENTS_PER_1K_TOKENS: z.coerce.number().positive().default(1),
+  /** Embedding/classification backlog drain per ingest run — raise to catch up faster (watch the budget). */
+  MAX_ENRICH_PER_RUN: z.coerce.number().int().min(0).default(40),
 
   MAX_MATCH_ALERTS_PER_DAY: z.coerce.number().int().min(1).max(10).default(3),
 
