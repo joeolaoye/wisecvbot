@@ -14,7 +14,9 @@ ENV NODE_ENV=production
 COPY package.json package-lock.json ./
 RUN npm ci --omit=dev && npm cache clean --force
 COPY --from=build /app/dist ./dist
-# migrations ship with the image; run `npm run db:migrate` before start
+# tsc doesn't copy YAML — the boards list ships next to dist/config/boards.js
+COPY --from=build /app/src/config/boards.yaml ./dist/config/boards.yaml
+# migrations ship with the image and are applied at boot by src/main.ts
 COPY drizzle ./drizzle
 COPY drizzle.config.ts ./
 USER node

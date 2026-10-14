@@ -9,7 +9,7 @@ import type { Job, Subscriber } from '../storage/schema.js'
 export interface Notifier {
   /** Returns true when the message actually went out. */
   deliverMatch(
-    subscriber: Subscriber,
+    subscriber: Pick<Subscriber, 'id' | 'channel' | 'channelUserId'>,
     job: Job,
     review: MatchReview,
     matchId: number,
@@ -25,7 +25,8 @@ export function formatSalary(job: Job): string | null {
 /**
  * Plain text, deliberately. Job titles/descriptions are untrusted strings; any
  * parse_mode (Markdown/HTML) would let a posting inject formatting or links
- * into our messages. No parse_mode anywhere in this codebase.
+ * into our messages. No parse_mode anywhere in this codebase. The job's
+ * canonical ATS URL is the one sanctioned link.
  */
 export function formatMatchMessage(job: Job, review: MatchReview): string {
   const lines = [
@@ -38,6 +39,7 @@ export function formatMatchMessage(job: Job, review: MatchReview): string {
   if (review.redFlags.length > 0) {
     lines.push('', `Flags: ${review.redFlags.join(' · ')}`)
   }
+  lines.push('', `🔗 ${job.url}`)
   return lines.filter((l) => l !== null).join('\n')
 }
 

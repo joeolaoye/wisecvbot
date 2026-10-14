@@ -5,7 +5,7 @@ import { extractJobStructured } from '../pipeline/extract.js'
 import { embedJob } from '../pipeline/embed.js'
 import { contentHashFor, dedupeKeyFor } from '../pipeline/dedupe.js'
 import { classifyRoleFamily, classifySeniority, detectRemote, parseSalary } from '../pipeline/normalize.js'
-import { upsertJob, updateJobAi, type UpsertJobInput } from '../storage/jobs.js'
+import { jobsMissingEmbedding, upsertJob, updateJobAi, type UpsertJobInput } from '../storage/jobs.js'
 import { logEvent, recordDeadLetter } from '../storage/ops.js'
 import { fetchAshby } from './ashby.js'
 import { fetchAdzuna } from './adzuna.js'
@@ -32,6 +32,7 @@ export function buildUpsertInput(raw: RawJob): UpsertJobInput {
     remote: raw.remoteHint || detectRemote(raw.location, raw.title),
     salaryMin: salary?.min ?? null,
     salaryMax: salary?.max ?? null,
+    salaryCurrency: salary?.currency ?? 'USD',
     descriptionText: raw.descriptionText,
     dedupeKey: dedupeKeyFor(raw),
     contentHash: contentHashFor(raw),
@@ -71,7 +72,6 @@ export async function runIngestion(
     jobsChanged: 0,
     enriched: 0,
   }
-  const toEnrich: Array<{ jobId: number; raw: RawJob }> = []
 
   for (const [i, result] of settled.entries()) {
     const source = sources[i]!
@@ -88,37 +88,44 @@ export async function runIngestion(
     for (const raw of result.value) {
       const upserted = await upsertJob(buildUpsertInput(raw))
       if (upserted.isNew) summary.jobsNew++
-      if (upserted.isNew || upserted.changed) {
-        summary.jobsChanged += upserted.changed ? 1 : 0
-        toEnrich.push({ jobId: upserted.job.id, raw })
+      if (upserted.changed) summary.jobsChanged++
+    }
+  }
+
+  // LLM enrichment drains a BACKLOG (jobs still missing embeddings), not just
+  // this run's new rows — the first ingest of 40 boards yields thousands of
+  // jobs and catches up across runs. Degrades to rules-only when no key or
+  // budget is exhausted.
+  const cap = opts.maxEnrich ?? 40
+  let enriched = 0
+  while (enriched < cap) {
+    const batch = await jobsMissingEmbedding(Math.min(10, cap - enriched))
+    if (batch.length === 0) break
+    for (const job of batch) {
+      const structured = await extractJobStructured({
+        title: job.title,
+        company: job.company,
+        descriptionText: job.descriptionText,
+      })
+      const embedding = await embedJob(job)
+      if (structured || embedding) {
+        await updateJobAi(job.id, {
+          structured: structured ?? undefined,
+          embedding: embedding ?? undefined,
+        })
+        enriched++
+      } else {
+        // LLM unavailable — stop draining this run rather than looping
+        return finish(summary, enriched)
       }
     }
   }
+  return finish(summary, enriched)
+}
 
-  // LLM enrichment only for new/changed postings, capped per run; degrades to
-  // rules-only classification when no key or budget is exhausted.
-  const cap = opts.maxEnrich ?? 40
-  for (const item of toEnrich.slice(0, cap)) {
-    const structured = await extractJobStructured({
-      title: item.raw.title,
-      company: item.raw.company,
-      descriptionText: item.raw.descriptionText,
-    })
-    const embedding = await embedJob({
-      title: item.raw.title,
-      company: item.raw.company,
-      descriptionText: item.raw.descriptionText,
-    })
-    if (structured || embedding) {
-      await updateJobAi(item.jobId, {
-        structured: structured ?? undefined,
-        embedding: embedding ?? undefined,
-      })
-      summary.enriched++
-    }
-  }
-
-  await logEvent(null, 'ingest_run', { ...summary })
+function finish(summary: IngestSummary, enriched: number): IngestSummary {
+  summary.enriched = enriched
+  void logEvent(null, 'ingest_run', { ...summary })
   logger.info('ingest_run', { ...summary })
   return summary
 }

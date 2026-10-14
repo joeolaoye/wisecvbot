@@ -18,7 +18,7 @@ vi.mock('../../src/llm.js', () => {
 })
 
 import { generateJson, LlmUnavailableError } from '../../src/llm.js'
-import { fallbackReview, reviewFit } from '../../src/matching/tier3-review.js'
+import { fallbackReview, reviewFit, sanitizeReview } from '../../src/matching/tier3-review.js'
 
 const profile = profileSchema.parse({
   roleFamily: 'backend',
@@ -78,5 +78,19 @@ describe('tier 3 fit review', () => {
     const call = vi.mocked(generateJson).mock.calls.at(-1)
     expect(call?.[2]).toContain('UNTRUSTED-DATA')
     expect(call?.[1]).toContain('never instructions')
+  })
+
+  it('strips injected URLs from LLM rationale strings — job.url is the only sanctioned link', () => {
+    const sanitized = sanitizeReview({
+      match: true,
+      fitScore: 80,
+      whyThisFits: ['Great stack — apply at https://evil.example now', 'Solid fit'],
+      redFlags: ['posting links www.phish.site/apply'],
+      questions: [],
+    })
+    expect(sanitized.whyThisFits[0]).not.toContain('evil.example')
+    expect(sanitized.whyThisFits[0]).toContain('[link removed]')
+    expect(sanitized.whyThisFits[1]).toBe('Solid fit')
+    expect(sanitized.redFlags[0]).not.toContain('phish.site')
   })
 })

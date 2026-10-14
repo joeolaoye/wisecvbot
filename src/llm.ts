@@ -34,8 +34,11 @@ function embeddingModel() {
   return provider().textEmbeddingModel(env.EMBEDDING_MODEL)
 }
 
-/** Conservative cents-per-1k-tokens for budget accounting (default over-estimates, which is the safe side). */
-const CENTS_PER_1K = Number(process.env.LLM_CENTS_PER_1K_TOKENS ?? 1)
+/** Cost estimate for budget accounting — env-configurable, defaults conservative. */
+const CENTS_PER_1K = env.LLM_CENTS_PER_1K_TOKENS
+
+/** Every provider call carries a hard timeout — a hung provider must never hang the pipeline. */
+const LLM_TIMEOUT_MS = 60_000
 
 async function ensureBudget(): Promise<void> {
   if (!llmConfigured()) throw new LlmUnavailableError('not-configured')
@@ -57,6 +60,7 @@ export async function generateJson<T>(schema: z.ZodType<T>, system: string, prom
     schema,
     system,
     prompt,
+    abortSignal: AbortSignal.timeout(LLM_TIMEOUT_MS),
   })
   const total = result.usage?.totalTokens ?? 0
   await addSpend(costCents(total))
@@ -66,7 +70,11 @@ export async function generateJson<T>(schema: z.ZodType<T>, system: string, prom
 export async function embedTexts(values: string[]): Promise<number[][]> {
   if (values.length === 0) return []
   await ensureBudget()
-  const result = await embedMany({ model: embeddingModel(), values })
+  const result = await embedMany({
+    model: embeddingModel(),
+    values,
+    abortSignal: AbortSignal.timeout(LLM_TIMEOUT_MS),
+  })
   await addSpend(costCents(result.usage?.tokens ?? values.length * 800))
   return result.embeddings
 }

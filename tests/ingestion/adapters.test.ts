@@ -42,10 +42,11 @@ describe('source adapters (recorded fixtures, no network)', () => {
     expect(jobs[0]!.remoteHint).toBe(true)
   })
 
-  test('buildUpsertInput: salary parsed, remote detected, rules classification applied', () => {
+  test('buildUpsertInput: salary parsed with currency, remote detected, rules classification applied', () => {
     const input = buildUpsertInput(mapRemotive(fixture('remotive.json').jobs)[0]!)
     expect(input.salaryMin).toBe(120000)
     expect(input.salaryMax).toBe(150000)
+    expect(input.salaryCurrency).toBe('USD')
     expect(input.remote).toBe(true)
     expect(input.structured.roleFamily).toBe('devops')
     expect(input.structured.seniority).toBe('mid')

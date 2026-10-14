@@ -27,6 +27,8 @@ export interface Tier1Job {
   remote: boolean
   salaryMin: number | null
   salaryMax: number | null
+  /** Non-USD salaries skip the floor check — comparing across currencies filters on false evidence. */
+  salaryCurrency?: string
 }
 
 export function tier1Filter(profile: Profile, job: Tier1Job): boolean {
@@ -41,8 +43,15 @@ export function tier1Filter(profile: Profile, job: Tier1Job): boolean {
 
   if (profile.remoteOnly && !job.remote) return false
 
-  // unknown job salary never excludes; known salary below the floor does
-  if (profile.salaryFloor !== null && job.salaryMax !== null && job.salaryMax < profile.salaryFloor) {
+  // unknown job salary never excludes; a known salary below the floor does
+  // (USD only — the floor is recorded in USD)
+  const isUsd = (job.salaryCurrency ?? 'USD') === 'USD'
+  if (
+    isUsd &&
+    profile.salaryFloor !== null &&
+    job.salaryMax !== null &&
+    job.salaryMax < profile.salaryFloor
+  ) {
     return false
   }
 

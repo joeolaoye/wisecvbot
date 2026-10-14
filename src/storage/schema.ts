@@ -83,7 +83,12 @@ export const subscribers = pgTable(
   (t) => [uniqueIndex('subscribers_channel_user_uq').on(t.channel, t.channelUserId)],
 )
 
-export type MatchStatus = 'sent' | 'interested' | 'rejected' | 'wrong_direction'
+/**
+ * Match lifecycle: `pending` = row reserved but delivery not yet confirmed —
+ * retried on the next run; only `sent` counts against allowances and
+ * no-resend windows. Crash-safe by design: a failed send never burns a job.
+ */
+export type MatchStatus = 'pending' | 'sent' | 'interested' | 'rejected' | 'wrong_direction'
 
 export const matches = pgTable(
   'matches',

@@ -30,11 +30,13 @@ const envSchema = z.object({
   CHAT_MODEL: z.string().default('gpt-4o-mini'),
   EMBEDDING_MODEL: z.string().default('text-embedding-3-small'),
   DAILY_LLM_BUDGET_CENTS: z.coerce.number().int().min(0).default(500),
+  /** Conservative cost estimate for budget accounting (default over-estimates, which is the safe side). */
+  LLM_CENTS_PER_1K_TOKENS: z.coerce.number().positive().default(1),
 
   MAX_MATCH_ALERTS_PER_DAY: z.coerce.number().int().min(1).max(10).default(3),
 
   INGEST_CRON: z.string().default('0 * * * *'),
-  MATCH_CRON: z.string().default('0 9 * * *'),
+  MATCH_CRON: z.string().default('30 9 * * *'),
 
   ADZUNA_APP_ID: z.string().optional(),
   ADZUNA_APP_KEY: z.string().optional(),
@@ -60,6 +62,11 @@ function parseEnv(): z.infer<typeof envSchema> {
     throw new Error(`Invalid environment configuration:\n${issues}\nCopy .env.example to .env and fill it in.`)
   }
   const env = parsed.data
+  // webhook mode is a public endpoint — refuse to run it unauthenticated
+  // (grammY accepts ALL requests when the secret token is undefined)
+  if (env.APP_URL && !env.TELEGRAM_WEBHOOK_SECRET) {
+    throw new Error('TELEGRAM_WEBHOOK_SECRET is required when APP_URL is set (webhook mode). Generate: openssl rand -hex 32')
+  }
   // key material must actually decode to 32 bytes, not just be long
   const key = Buffer.from(env.CV_ENCRYPTION_KEY, 'base64')
   if (key.length !== 32) {

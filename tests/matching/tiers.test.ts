@@ -43,6 +43,11 @@ describe('tier 1 filters', () => {
     expect(tier1Filter(picky, job())).toBe(true) // unknown salary never excludes
   })
 
+  test('non-USD salaries skip the floor check — no cross-currency comparisons', () => {
+    const picky = profileSchema.parse({ ...profile, salaryFloor: 150000 })
+    expect(tier1Filter(picky, job({ salaryMax: 120000, salaryCurrency: 'EUR' }))).toBe(true)
+  })
+
   test('remote-only profiles skip on-site jobs', () => {
     const remoteOnly = profileSchema.parse({ ...profile, remoteOnly: true })
     expect(tier1Filter(remoteOnly, job({ remote: false }))).toBe(false)

@@ -7,6 +7,7 @@ describe('parseSalary', () => {
     ['€60k-€80k per annum', 60000, 80000, 'EUR'],
     ['£90,000 to £110,000', 90000, 110000, 'GBP'],
     ['160k+', 160000, 160000, 'USD'],
+    ['$120k/yr', 120000, 120000, 'USD'],
     ['$135,000', 135000, 135000, 'USD'],
   ])('%s → %d..%d %s', (text, min, max, currency) => {
     expect(parseSalary(text)).toEqual({ min, max, currency })

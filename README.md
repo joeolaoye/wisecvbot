@@ -20,10 +20,9 @@ Requirements: Docker, a Telegram bot token ([@BotFather](https://t.me/BotFather)
 git clone https://github.com/wisecv/wisecv && cd wisecv
 cp .env.example .env        # fill in TELEGRAM_BOT_TOKEN, OPENAI_API_KEY, CV_ENCRYPTION_KEY
 docker compose -f deploy/docker-compose.yml up -d --build
-docker compose -f deploy/docker-compose.yml exec app npm run db:migrate
 ```
 
-Without `APP_URL` set the bot runs in long-polling mode — perfect for local testing. Full guide: [docs/self-hosting.md](docs/self-hosting.md).
+Migrations apply automatically at boot. Without `APP_URL` set the bot runs in long-polling mode — perfect for local testing. Full guide: [docs/self-hosting.md](docs/self-hosting.md).
 
 ## How it works
 

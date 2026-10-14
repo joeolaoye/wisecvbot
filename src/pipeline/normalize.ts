@@ -31,7 +31,7 @@ export function parseSalary(text: string | null | undefined): ParsedSalary | nul
 
   // normalize numbers: expand "150k" → 150000, strip thousands separators
   const normalized = t
-    .replace(/(\d{1,3}(?:[.,]\d+)?)\s*k(?=\b|[\s,]|-|–|to)/g, (_m, n: string) =>
+    .replace(/(\d{1,3}(?:[.,]\d+)?)\s*k(?=[^\w]|$)/g, (_m, n: string) =>
       String(Math.round(parseFloat(n.replace(',', '.')) * 1000)),
     )
     .replace(/(\d),(?=\d{3}\b)/g, '$1')

@@ -13,11 +13,13 @@ import { extractProfileFromCv } from '../pipeline/extract.js'
 import { embedProfile } from '../pipeline/embed.js'
 import { encryptCv } from '../security/encryption.js'
 import { getMatch, logEvent, markFeedback } from '../storage/ops.js'
-import type { Job, Subscriber } from '../storage/schema.js'
+import type { Job } from '../storage/schema.js'
+import type { SubscriberLite } from '../storage/subscribers.js'
 import {
   adjustThreshold,
   clearCv,
   createIfAbsent,
+  getByChannelUser,
   purge,
   setCv,
   setConsent,
@@ -149,6 +151,8 @@ export function parseProfileEdits(
 
 const awaitingSkills = new Set<number>()
 const awaitingEdit = new Set<number>()
+const manualRole = new Map<string, RoleFamily>()
+const pendingSeniority = new Map<string, Seniority>()
 
 // ── Copy ────────────────────────────────────────────────────────────
 
@@ -220,26 +224,63 @@ const matchKeyboard = (matchId: number, jobId: number) =>
 
 // ── Helpers ──────────────────────────────────────────────────────────
 
-async function currentSub(ctx: Context): Promise<Subscriber> {
-  const userId = String(ctx.from?.id ?? '')
-  if (!userId) throw new Error('no user id in update')
-  return createIfAbsent(CHANNEL, userId)
+function userId(ctx: Context): string {
+  const id = String(ctx.from?.id ?? '')
+  if (!id) throw new Error('no user id in update')
+  return id
+}
+
+/**
+ * Read-only lookup — no row is created here. The subscriber row (and any
+ * stored data) only comes into existence when consent is granted; a stranger
+ * who /starts and walks away leaves nothing behind.
+ */
+async function fetchSub(ctx: Context): Promise<SubscriberLite | null> {
+  return getByChannelUser(CHANNEL, userId(ctx))
+}
+
+async function ensureSub(ctx: Context): Promise<SubscriberLite> {
+  return createIfAbsent(CHANNEL, userId(ctx))
+}
+
+function clearManualState(sub: SubscriberLite | null): void {
+  if (sub) {
+    awaitingSkills.delete(sub.id)
+    awaitingEdit.delete(sub.id)
+    manualRole.delete(sub.channelUserId)
+    pendingSeniority.delete(sub.channelUserId)
+  }
 }
 
 function sendConfirmationCard(ctx: Context, profile: Profile) {
   return ctx.reply(formatProfileCard(profile), { reply_markup: confirmKeyboard() })
 }
 
-async function finalize(ctx: Context, sub: Subscriber, profile: Profile): Promise<void> {
+async function finalize(ctx: Context, sub: SubscriberLite, profile: Profile): Promise<void> {
   const embedding = await embedProfile(profile)
   await activate(sub.id, profile, embedding)
   await logEvent(sub.id, 'registration_complete')
   await ctx.reply(SUCCESS)
 }
 
+/** A failed CV parse must never silently unsubscribe an active user. */
+function restoreStatus(sub: SubscriberLite): void {
+  const prior = sub.status
+  const back =
+    prior === 'active' || prior === 'paused' || prior === 'awaiting_confirmation'
+      ? prior
+      : 'awaiting_cv'
+  void setStatus(sub.id, back)
+}
+
 // ── Handlers ─────────────────────────────────────────────────────────
 
-async function handleCvUpload(ctx: Context, sub: Subscriber, fileId: string, filename: string) {
+async function handleCvUpload(
+  ctx: Context,
+  sub: SubscriberLite,
+  fileId: string,
+  filename: string,
+): Promise<void> {
   const doc = ctx.message?.document
   const okMime =
     !doc?.mime_type ||
@@ -268,7 +309,7 @@ async function handleCvUpload(ctx: Context, sub: Subscriber, fileId: string, fil
     const text = await extractCvText(buffer, filename)
 
     if (text.replace(/\s/g, '').length < 100) {
-      await setStatus(sub.id, 'awaiting_cv')
+      restoreStatus(sub)
       await ctx.reply(
         "I couldn't read much text from that file (scanned/image PDFs trip me up). Try a text-based PDF, or:",
         { reply_markup: cvKeyboard() },
@@ -278,7 +319,7 @@ async function handleCvUpload(ctx: Context, sub: Subscriber, fileId: string, fil
 
     const profile = await extractProfileFromCv(text)
     if (!profile) {
-      await setStatus(sub.id, 'awaiting_cv')
+      restoreStatus(sub)
       await ctx.reply(
         "Something went wrong reading your CV — mind trying again, or answering a few questions instead?",
         { reply_markup: cvKeyboard() },
@@ -290,7 +331,7 @@ async function handleCvUpload(ctx: Context, sub: Subscriber, fileId: string, fil
     await logEvent(sub.id, 'cv_parsed', { uncertain: profile.uncertain })
     await sendConfirmationCard(ctx, profile)
   } catch (err) {
-    await setStatus(sub.id, 'awaiting_cv')
+    restoreStatus(sub)
     logger.error('cv_flow_failed', { subscriberId: sub.id, error: String(err).slice(0, 200) })
     await ctx.reply('Something broke on my side. Please send the CV once more.')
   }
@@ -300,11 +341,14 @@ function registerHandlers(bot: Bot) {
   bot.catch((err) => logger.error('bot_error', { error: String(err.error).slice(0, 300) }))
 
   bot.command('start', async (ctx) => {
-    const sub = await currentSub(ctx)
-    await logEvent(sub.id, 'start')
-    if (sub.status === 'new') {
+    const sub = await fetchSub(ctx)
+    clearManualState(sub)
+    if (!sub || sub.status === 'new') {
+      // nothing is persisted until the consent tap — welcome only
       await ctx.reply(WELCOME, { reply_markup: consentKeyboard() })
-    } else if (sub.status === 'active') {
+      return
+    }
+    if (sub.status === 'active') {
       await ctx.reply("You're all set — matches are flowing. /profile · /pause · /delete")
     } else {
       await ctx.reply(`Let's pick up where we left off. ${CV_PROMPT}`, { reply_markup: cvKeyboard() })
@@ -323,21 +367,24 @@ function registerHandlers(bot: Bot) {
   )
 
   bot.command('pause', async (ctx) => {
-    const sub = await currentSub(ctx)
+    const sub = await fetchSub(ctx)
+    if (!sub) return void ctx.reply("Let's get you set up first — /start")
     if (sub.status === 'active') await setStatus(sub.id, 'paused')
     await logEvent(sub.id, 'pause')
     await ctx.reply('Paused ⏸ No more alerts. /resume when you want back in.')
   })
 
   bot.command('resume', async (ctx) => {
-    const sub = await currentSub(ctx)
+    const sub = await fetchSub(ctx)
+    if (!sub) return void ctx.reply("Let's get you set up first — /start")
     if (sub.status === 'paused') await setStatus(sub.id, 'active')
     await logEvent(sub.id, 'resume')
     await ctx.reply("Resumed ▶️ You're back in tomorrow's matches.")
   })
 
   bot.command('profile', async (ctx) => {
-    const sub = await currentSub(ctx)
+    const sub = await fetchSub(ctx)
+    if (!sub) return void ctx.reply("Let's get you set up first — /start")
     if (!sub.profile) {
       await ctx.reply(CV_PROMPT, { reply_markup: cvKeyboard() })
       return
@@ -350,7 +397,7 @@ function registerHandlers(bot: Bot) {
   })
 
   bot.command('delete', async (ctx) => {
-    await currentSub(ctx)
+    await fetchSub(ctx) // gate: no account → still show the flow for consistency
     await ctx.reply('Delete your account and ALL data (CV, profile, history)? This cannot be undone.', {
       reply_markup: new InlineKeyboard()
         .text('Yes, delete everything', 'del:yes')
@@ -358,9 +405,9 @@ function registerHandlers(bot: Bot) {
     })
   })
 
-  // ── consent (Stage 1) ──
+  // ── consent (Stage 1) — the row is born here, not at /start ──
   bot.callbackQuery('consent:yes', async (ctx) => {
-    const sub = await currentSub(ctx)
+    const sub = await ensureSub(ctx)
     await setConsent(sub.id)
     await setStatus(sub.id, 'awaiting_cv')
     await logEvent(sub.id, 'consent_granted')
@@ -369,15 +416,18 @@ function registerHandlers(bot: Bot) {
   })
 
   bot.callbackQuery('consent:no', async (ctx) => {
-    const sub = await currentSub(ctx)
-    await logEvent(sub.id, 'consent_declined')
-    await purge(sub.id)
+    const sub = await fetchSub(ctx)
+    if (sub) {
+      await logEvent(sub.id, 'consent_declined')
+      await purge(sub.id)
+    }
     await ctx.answerCallbackQuery()
     await ctx.reply('No problem — everything is already deleted. The bot stays quiet. 👋')
   })
 
   bot.callbackQuery('del:yes', async (ctx) => {
-    const sub = await currentSub(ctx)
+    const sub = await fetchSub(ctx)
+    if (!sub) return void ctx.answerCallbackQuery('Already gone')
     await purge(sub.id) // events & matches cascade — verified against the DB, not the UI
     await ctx.answerCallbackQuery('Deleted')
     await ctx.reply('Done — CV, profile, and history are gone. /start if you ever come back. 👋')
@@ -390,21 +440,20 @@ function registerHandlers(bot: Bot) {
 
   // ── no-CV fallback: 5 quick questions (journey doc §5) ──
   bot.callbackQuery('reg:nocv', async (ctx) => {
-    const sub = await currentSub(ctx)
+    const sub = await ensureSub(ctx)
     await setStatus(sub.id, 'awaiting_cv')
     await ctx.answerCallbackQuery()
     await ctx.reply('No problem. What kind of role are you after?', { reply_markup: roleKeyboard() })
   })
 
   bot.callbackQuery(/^mrole:(.+)$/, async (ctx) => {
-    const family = (ctx.match?.[1] ?? 'other') as RoleFamily
-    manualRole.set(String(ctx.from?.id), family)
+    manualRole.set(userId(ctx), (ctx.match?.[1] ?? 'other') as RoleFamily)
     await ctx.answerCallbackQuery()
     await ctx.reply('What level?', { reply_markup: seniorityKeyboard() })
   })
 
   bot.callbackQuery(/^msen:(.+)$/, async (ctx) => {
-    const sub = await currentSub(ctx)
+    const sub = await ensureSub(ctx)
     pendingSeniority.set(sub.channelUserId, (ctx.match?.[1] ?? 'mid') as Seniority)
     awaitingSkills.add(sub.id)
     await ctx.answerCallbackQuery()
@@ -413,8 +462,8 @@ function registerHandlers(bot: Bot) {
 
   bot.callbackQuery(/^mloc2:(.+)$/, async (ctx) => {
     // follow-up: remote preference → finalize (all paths end here)
-    const sub = await currentSub(ctx)
-    if (!sub.profile) return void ctx.answerCallbackQuery()
+    const sub = await fetchSub(ctx)
+    if (!sub?.profile) return void ctx.answerCallbackQuery()
     const merged: Profile = { ...sub.profile, remoteOnly: ctx.match?.[1] === 'remote' }
     await ctx.answerCallbackQuery()
     await finalize(ctx, sub, merged)
@@ -422,8 +471,8 @@ function registerHandlers(bot: Bot) {
 
   bot.callbackQuery(/^msal2:(.+)$/, async (ctx) => {
     // follow-up: salary floor → remote question
-    const sub = await currentSub(ctx)
-    if (!sub.profile) return void ctx.answerCallbackQuery()
+    const sub = await fetchSub(ctx)
+    if (!sub?.profile) return void ctx.answerCallbackQuery()
     const raw = ctx.match?.[1] ?? 'skip'
     const merged: Profile = {
       ...sub.profile,
@@ -436,8 +485,8 @@ function registerHandlers(bot: Bot) {
 
   // ── confirmation (Stage 4 — the ratification gate) ──
   bot.callbackQuery('confirm:yes', async (ctx) => {
-    const sub = await currentSub(ctx)
-    if (!sub.profile) {
+    const sub = await fetchSub(ctx)
+    if (!sub?.profile) {
       await ctx.answerCallbackQuery({ text: 'Profile missing — /start again' })
       return
     }
@@ -449,7 +498,8 @@ function registerHandlers(bot: Bot) {
   })
 
   bot.callbackQuery('confirm:edit', async (ctx) => {
-    const sub = await currentSub(ctx)
+    const sub = await fetchSub(ctx)
+    if (!sub) return void ctx.answerCallbackQuery()
     awaitingEdit.add(sub.id)
     await ctx.answerCallbackQuery()
     await ctx.reply(
@@ -458,7 +508,8 @@ function registerHandlers(bot: Bot) {
   })
 
   bot.callbackQuery('confirm:wrongcv', async (ctx) => {
-    const sub = await currentSub(ctx)
+    const sub = await fetchSub(ctx)
+    if (!sub) return void ctx.answerCallbackQuery()
     await clearCv(sub.id)
     await setStatus(sub.id, 'awaiting_cv')
     await ctx.answerCallbackQuery()
@@ -467,7 +518,7 @@ function registerHandlers(bot: Bot) {
 
   // ── match feedback (journey doc §3.5) ──
   bot.callbackQuery(/^fb:(\d+):([inw])$/, async (ctx) => {
-    const sub = await currentSub(ctx)
+    const sub = await ensureSub(ctx)
     const matchId = Number(ctx.match?.[1])
     const verdict = ctx.match?.[2]
     const action = verdict === 'i' ? 'interested' : verdict === 'n' ? 'rejected' : 'wrong_direction'
@@ -494,18 +545,18 @@ function registerHandlers(bot: Bot) {
   })
 
   bot.callbackQuery(/^wd:\d+:(.+)$/, async (ctx) => {
-    const sub = await currentSub(ctx)
+    const sub = await fetchSub(ctx)
     const reason = ctx.match?.[1] ?? 'other'
     const matchId = Number(ctx.match?.[0]?.split(':')[1] ?? 0)
     const match = await getMatch(matchId)
-    if (sub.profile && match) {
+    if (sub?.profile && match) {
       const note = `Avoid: ${reason} (from feedback)`
       await updateProfile(sub.id, {
         ...sub.profile,
         notes: (sub.profile.notes ? `${sub.profile.notes}; ` : '') + note,
       })
     }
-    await logEvent(sub.id, 'wrong_direction', { matchId, reason })
+    if (sub) await logEvent(sub.id, 'wrong_direction', { matchId, reason })
     await ctx.answerCallbackQuery({ text: 'Got it — profile updated.' })
   })
 
@@ -516,11 +567,11 @@ function registerHandlers(bot: Bot) {
 
   // ── documents (CV upload / re-upload) ──
   bot.on(':document', async (ctx) => {
-    const sub = await currentSub(ctx)
+    const sub = await fetchSub(ctx)
     const doc = ctx.message?.document
     if (!doc) return
     const allowed = ['consented', 'awaiting_cv', 'awaiting_confirmation', 'active', 'paused']
-    if (!allowed.includes(sub.status)) {
+    if (!sub || !allowed.includes(sub.status)) {
       await ctx.reply("Let's do the quick intro first — /start")
       return
     }
@@ -529,9 +580,13 @@ function registerHandlers(bot: Bot) {
 
   // ── free text (manual-flow skills + profile edits) ──
   bot.on(':text', async (ctx) => {
-    const sub = await currentSub(ctx)
     const text = ctx.message?.text ?? ''
     if (text.startsWith('/')) return // commands handled above
+    const sub = await fetchSub(ctx)
+    if (!sub || sub.status === 'new') {
+      await ctx.reply("Let's get you set up first — /start")
+      return
+    }
 
     if (awaitingSkills.has(sub.id)) {
       awaitingSkills.delete(sub.id)
@@ -545,6 +600,8 @@ function registerHandlers(bot: Bot) {
         seniority: (pendingSeniority.get(sub.channelUserId) ?? 'mid') as Seniority,
         skills,
       })
+      manualRole.delete(sub.channelUserId)
+      pendingSeniority.delete(sub.channelUserId)
       await setProfileDraft(sub.id, profile)
       await sendConfirmationCard(ctx, profile)
       return
@@ -554,7 +611,8 @@ function registerHandlers(bot: Bot) {
       awaitingEdit.delete(sub.id)
       const { profile, applied, ignored } = parseProfileEdits(sub.profile, text)
       await updateProfile(sub.id, profile)
-      await logEvent(sub.id, 'profile_edited', { fields: applied })
+      // field names only — values are user content and stay out of the events table
+      await logEvent(sub.id, 'profile_edited', { fields: applied.map((a) => a.split(' → ')[0]) })
       await ctx.reply(
         applied.length > 0
           ? `Updated: ${applied.join('; ')}${ignored.length > 0 ? `\n(ignored: ${ignored.join('; ')})` : ''}`
@@ -568,14 +626,24 @@ function registerHandlers(bot: Bot) {
   })
 }
 
-// partial manual-flow answers (keyed by channel user id, pre-draft)
-const manualRole = new Map<string, RoleFamily>()
-const pendingSeniority = new Map<string, Seniority>()
-
 // ── Wiring ───────────────────────────────────────────────────────────
 
 export function createBot(): Bot {
   const bot = new Bot(requireBotEnv())
+  // per-user sequencing: a double-tap must not run two handlers over the same
+  // subscriber row concurrently (promise chain keyed by user id)
+  const chains = new Map<string, Promise<unknown>>()
+  bot.use((ctx, next) => {
+    const key = ctx.from ? `u${ctx.from.id}` : null
+    if (!key) return next()
+    const prev = chains.get(key) ?? Promise.resolve()
+    const run = prev.then(
+      () => next() as Promise<unknown>,
+      () => next() as Promise<unknown>,
+    )
+    chains.set(key, run.catch(() => undefined))
+    return run
+  })
   registerHandlers(bot)
   return bot
 }
@@ -583,10 +651,12 @@ export function createBot(): Bot {
 /** Notifier used by the match orchestrator. */
 export function telegramNotifier(bot: Bot): Notifier {
   return {
-    async deliverMatch(sub: Subscriber, job: Job, review: MatchReview, matchId: number): Promise<boolean> {
+    async deliverMatch(sub, job: Job, review: MatchReview, matchId: number): Promise<boolean> {
       try {
         await bot.api.sendMessage(sub.channelUserId, formatMatchMessage(job, review), {
           reply_markup: matchKeyboard(matchId, job.id),
+          // job text is untrusted — never render link previews from it
+          link_preview_options: { is_disabled: true },
         })
         return true
       } catch (err) {

@@ -1,4 +1,4 @@
-import { and, count, desc, eq, gte, inArray, isNull, sql } from 'drizzle-orm'
+import { and, count, desc, eq, gte, inArray, isNull, lt } from 'drizzle-orm'
 import { db } from './db.js'
 import { jobs, type Job } from './schema.js'
 import type { JobStructured } from '../domain/job.js'
@@ -13,6 +13,7 @@ export interface UpsertJobInput {
   remote: boolean
   salaryMin: number | null
   salaryMax: number | null
+  salaryCurrency: string
   descriptionText: string
   dedupeKey: string
   contentHash: string
@@ -27,6 +28,16 @@ export interface UpsertResult {
 
 export async function upsertJob(input: UpsertJobInput): Promise<UpsertResult> {
   const [existing] = await db.select().from(jobs).where(eq(jobs.dedupeKey, input.dedupeKey)).limit(1)
+
+  // unchanged repost: only bump lastSeen — no full-row rewrite 24×/day
+  if (existing && existing.contentHash === input.contentHash) {
+    const [row] = await db
+      .update(jobs)
+      .set({ lastSeen: new Date() })
+      .where(eq(jobs.id, existing.id))
+      .returning()
+    return { job: row ?? existing, isNew: false, changed: false }
+  }
 
   const { structured, ...rest } = input
   const values = {
@@ -47,6 +58,7 @@ export async function upsertJob(input: UpsertJobInput): Promise<UpsertResult> {
         remote: values.remote,
         salaryMin: values.salaryMin,
         salaryMax: values.salaryMax,
+        salaryCurrency: values.salaryCurrency,
         descriptionText: values.descriptionText,
         contentHash: values.contentHash,
         lastSeen: new Date(),
@@ -58,7 +70,7 @@ export async function upsertJob(input: UpsertJobInput): Promise<UpsertResult> {
   return {
     job: row,
     isNew: !existing,
-    changed: Boolean(existing && existing.contentHash !== input.contentHash),
+    changed: Boolean(existing),
   }
 }
 
@@ -78,10 +90,57 @@ export async function updateJobAi(
   await db.update(jobs).set(set).where(eq(jobs.id, jobId))
 }
 
-export async function jobsSince(since: Date): Promise<Job[]> {
-  return db.select().from(jobs).where(gte(jobs.lastSeen, since)).orderBy(desc(jobs.lastSeen))
+/**
+ * Slim candidate shape for the orchestrator — everything tier 1/2 and message
+ * formatting need, WITHOUT descriptionText (fetched later only for the ≤5
+ * tier-3 survivors) so the daily run never hauls the whole corpus of job
+ * text into memory.
+ */
+export const jobLiteColumns = {
+  id: jobs.id,
+  company: jobs.company,
+  title: jobs.title,
+  url: jobs.url,
+  location: jobs.location,
+  remote: jobs.remote,
+  salaryMin: jobs.salaryMin,
+  salaryMax: jobs.salaryMax,
+  salaryCurrency: jobs.salaryCurrency,
+  roleFamily: jobs.roleFamily,
+  seniority: jobs.seniority,
+  dedupeKey: jobs.dedupeKey,
+  embedding: jobs.embedding,
+  lastSeen: jobs.lastSeen,
+} as const
+
+export type JobLite = {
+  id: number
+  company: string
+  title: string
+  url: string
+  location: string | null
+  remote: boolean
+  salaryMin: number | null
+  salaryMax: number | null
+  salaryCurrency: string
+  roleFamily: string
+  seniority: string
+  dedupeKey: string
+  embedding: number[] | null
+  lastSeen: Date
 }
 
+export async function jobsSince(since: Date): Promise<JobLite[]> {
+  return db.select(jobLiteColumns).from(jobs).where(gte(jobs.lastSeen, since)).orderBy(desc(jobs.lastSeen))
+}
+
+/** Full rows (description included) for the few jobs that reach tier 3 / delivery. */
+export async function jobsByIds(ids: number[]): Promise<Job[]> {
+  if (ids.length === 0) return []
+  return db.select().from(jobs).where(inArray(jobs.id, ids))
+}
+
+/** Backlog drain: jobs still lacking embeddings (ingest enrichment catches up over runs). */
 export async function jobsMissingEmbedding(limit: number): Promise<Job[]> {
   return db
     .select()
@@ -96,32 +155,7 @@ export async function countJobs(): Promise<number> {
   return Number(row?.value ?? 0)
 }
 
-function toVectorLiteral(embedding: number[]): string {
-  return `'[${embedding.map((n) => Number(n).toFixed(6)).join(',')}]'::vector`
-}
-
-/** Distance-ordered candidate jobs for tier 2 (pgvector cosine, `<=>`). */
-export async function nearestJobs(
-  embedding: number[],
-  candidateIds: number[],
-  limit: number,
-): Promise<{ job: Job; distance: number }[]> {
-  if (candidateIds.length === 0) return []
-
-  const out: { job: Job; distance: number }[] = []
-  const vec = sql.raw(toVectorLiteral(embedding))
-  const ids = [...candidateIds]
-
-  for (let i = 0; i < ids.length; i += 500) {
-    const chunk = ids.slice(i, i + 500)
-    const rows = await db
-      .select({ job: jobs, distance: sql<number>`${jobs.embedding} <=> ${vec}` })
-      .from(jobs)
-      .where(and(inArray(jobs.id, chunk), sql`${jobs.embedding} is not null`))
-      .orderBy(sql`${jobs.embedding} <=> ${vec}`)
-      .limit(limit)
-    for (const r of rows) out.push({ job: r.job, distance: Number(r.distance) })
-  }
-  out.sort((a, b) => a.distance - b.distance)
-  return out.slice(0, limit)
+/** Stale postings eventually go; embeddings alone are ~6KB/row. */
+export async function pruneJobs(days: number): Promise<void> {
+  await db.delete(jobs).where(lt(jobs.lastSeen, new Date(Date.now() - days * 86_400_000)))
 }

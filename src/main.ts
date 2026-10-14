@@ -1,13 +1,17 @@
-import { checkConnection, closeDb } from './storage/db.js'
+import { migrate } from 'drizzle-orm/node-postgres/migrator'
+import { checkConnection, closeDb, db } from './storage/db.js'
 import { createBot, telegramNotifier } from './channels/telegram.js'
 import { env, requireBotEnv } from './config/env.js'
 import { logger } from './log.js'
-import { startScheduler } from './scheduler.js'
+import { schedulerIdle, startScheduler } from './scheduler.js'
 import { startServer } from './server.js'
 
 async function main(): Promise<void> {
   await checkConnection()
-  logger.info('wisebot_starting', { env: env.NODE_ENV })
+  // migrations ship in the image and apply at boot — idempotent, journal-tracked,
+  // so a fresh self-hosted stack never runs against missing tables
+  await migrate(db, { migrationsFolder: 'drizzle' })
+  logger.info('migrations_applied', { env: env.NODE_ENV })
 
   const bot = createBot()
   const notifier = telegramNotifier(bot)
@@ -30,6 +34,11 @@ async function main(): Promise<void> {
   const shutdown = async (signal: string) => {
     logger.info('shutting_down', { signal })
     await bot.stop()
+    // give an in-flight scheduled run a brief window to finish so a SIGTERM
+    // mid-broadcast doesn't orphan deliveries (they'd retry as `pending`)
+    for (let i = 0; i < 20 && !schedulerIdle(); i++) {
+      await new Promise((r) => setTimeout(r, 500))
+    }
     await closeDb()
     process.exit(0)
   }

@@ -3,6 +3,7 @@ import { webhookCallback, type Bot } from 'grammy'
 import { env } from './config/env.js'
 import { logger } from './log.js'
 import { countJobs } from './storage/jobs.js'
+import { deadLetterCount } from './storage/ops.js'
 
 /**
  * The only public surface (behind Caddy TLS): healthz + the Telegram webhook.
@@ -11,16 +12,21 @@ import { countJobs } from './storage/jobs.js'
  */
 export function startServer(bot: Bot): void {
   const webhookPath = `/${env.TELEGRAM_WEBHOOK_PATH.replace(/^\//, '')}`
+  // CV upload + parse + LLM extraction can exceed grammY's default 10s; when
+  // it does, answer 200 anyway (onTimeout: 'return') so Telegram doesn't retry
+  // the update into the still-running handler — duplicate replies and spend.
   const handleWebhook = webhookCallback(bot, 'http', {
     secretToken: env.TELEGRAM_WEBHOOK_SECRET,
+    onTimeout: 'return',
+    timeoutMilliseconds: 120_000,
   })
 
   const server = createServer(async (req: IncomingMessage, res: ServerResponse) => {
     try {
       if (req.method === 'GET' && req.url === '/healthz') {
-        const jobs = await countJobs()
+        const [jobs, deadLetters] = await Promise.all([countJobs(), deadLetterCount()])
         res.writeHead(200, { 'content-type': 'application/json' })
-        res.end(JSON.stringify({ ok: true, jobs }))
+        res.end(JSON.stringify({ ok: true, jobs, deadLetters }))
         return
       }
       if (req.method === 'POST' && req.url === webhookPath) {

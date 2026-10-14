@@ -3,19 +3,39 @@ import { db } from './db.js'
 import { subscribers, type JobStatuses, type Subscriber } from './schema.js'
 import type { Profile } from '../domain/job.js'
 
+/**
+ * Every read path projects these columns — the encrypted CV blob is fetched
+ * only by explicit CV operations, never dragged along by match runs or bot
+ * updates.
+ */
+export type SubscriberLite = Omit<Subscriber, 'cvBlob' | 'cvFilename'>
+
+const liteColumns = {
+  id: subscribers.id,
+  channel: subscribers.channel,
+  channelUserId: subscribers.channelUserId,
+  status: subscribers.status,
+  profile: subscribers.profile,
+  profileEmbedding: subscribers.profileEmbedding,
+  matchThreshold: subscribers.matchThreshold,
+  consentAt: subscribers.consentAt,
+  createdAt: subscribers.createdAt,
+  updatedAt: subscribers.updatedAt,
+} as const
+
 export async function getByChannelUser(
   channel: string,
   channelUserId: string,
-): Promise<Subscriber | null> {
+): Promise<SubscriberLite | null> {
   const [row] = await db
-    .select()
+    .select(liteColumns)
     .from(subscribers)
     .where(and(eq(subscribers.channel, channel), eq(subscribers.channelUserId, channelUserId)))
     .limit(1)
   return row ?? null
 }
 
-export async function createIfAbsent(channel: string, channelUserId: string): Promise<Subscriber> {
+export async function createIfAbsent(channel: string, channelUserId: string): Promise<SubscriberLite> {
   const [row] = await db
     .insert(subscribers)
     .values({ channel, channelUserId })
@@ -23,7 +43,7 @@ export async function createIfAbsent(channel: string, channelUserId: string): Pr
       target: [subscribers.channel, subscribers.channelUserId],
       set: { updatedAt: new Date() },
     })
-    .returning()
+    .returning(liteColumns)
   if (!row) throw new Error('createIfAbsent returned no row')
   return row
 }
@@ -95,6 +115,6 @@ export async function purge(id: number): Promise<void> {
   await db.delete(subscribers).where(eq(subscribers.id, id))
 }
 
-export async function activeSubscribers(): Promise<Subscriber[]> {
-  return db.select().from(subscribers).where(eq(subscribers.status, 'active'))
+export async function activeSubscribers(): Promise<SubscriberLite[]> {
+  return db.select(liteColumns).from(subscribers).where(eq(subscribers.status, 'active'))
 }
