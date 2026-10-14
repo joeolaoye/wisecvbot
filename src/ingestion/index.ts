@@ -123,9 +123,12 @@ export async function runIngestion(
   return finish(summary, enriched)
 }
 
-function finish(summary: IngestSummary, enriched: number): IngestSummary {
+function finish(summary: IngestSummary, enriched: number): Promise<IngestSummary> {
   summary.enriched = enriched
-  void logEvent(null, 'ingest_run', { ...summary })
-  logger.info('ingest_run', { ...summary })
-  return summary
+  // awaited: the CLI closes the DB pool right after runIngestion returns —
+  // a fire-and-forget insert here dies with the pool
+  return logEvent(null, 'ingest_run', { ...summary }).then(() => {
+    logger.info('ingest_run', { ...summary })
+    return summary
+  })
 }

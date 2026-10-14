@@ -6,30 +6,34 @@ import { countJobs } from './storage/jobs.js'
 import { deadLetterCount } from './storage/ops.js'
 
 /**
- * The only public surface (behind Caddy TLS): healthz + the Telegram webhook.
- * grammY validates the X-Telegram-Bot-Api-Secret-Token header before
- * processing anything.
+ * The only public surface (behind Caddy TLS): healthz + (when a bot runs) the
+ * Telegram webhook. grammY validates the X-Telegram-Bot-Api-Secret-Token
+ * header before processing anything.
  */
-export function startServer(bot: Bot): void {
+export function startServer(bot?: Bot): void {
   const webhookPath = `/${env.TELEGRAM_WEBHOOK_PATH.replace(/^\//, '')}`
   // CV upload + parse + LLM extraction can exceed grammY's default 10s; when
   // it does, answer 200 anyway (onTimeout: 'return') so Telegram doesn't retry
   // the update into the still-running handler — duplicate replies and spend.
-  const handleWebhook = webhookCallback(bot, 'http', {
-    secretToken: env.TELEGRAM_WEBHOOK_SECRET,
-    onTimeout: 'return',
-    timeoutMilliseconds: 120_000,
-  })
+  const handleWebhook = bot
+    ? webhookCallback(bot, 'http', {
+        secretToken: env.TELEGRAM_WEBHOOK_SECRET,
+        onTimeout: 'return',
+        timeoutMilliseconds: 120_000,
+      })
+    : null
 
   const server = createServer(async (req: IncomingMessage, res: ServerResponse) => {
     try {
-      if (req.method === 'GET' && req.url === '/healthz') {
+      // compare on pathname only — monitors/CDNs append query strings to health probes
+      const pathname = req.url ? new URL(req.url, 'http://localhost').pathname : '/'
+      if (req.method === 'GET' && pathname === '/healthz') {
         const [jobs, deadLetters] = await Promise.all([countJobs(), deadLetterCount()])
         res.writeHead(200, { 'content-type': 'application/json' })
         res.end(JSON.stringify({ ok: true, jobs, deadLetters }))
         return
       }
-      if (req.method === 'POST' && req.url === webhookPath) {
+      if (req.method === 'POST' && pathname === webhookPath && handleWebhook) {
         await handleWebhook(req, res)
         return
       }
@@ -41,6 +45,6 @@ export function startServer(bot: Bot): void {
   })
 
   server.listen(env.APP_PORT, () => {
-    logger.info('server_listening', { port: env.APP_PORT, webhookPath })
+    logger.info('server_listening', { port: env.APP_PORT, webhookPath, bot: Boolean(bot) })
   })
 }

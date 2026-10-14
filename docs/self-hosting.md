@@ -7,7 +7,7 @@ cp .env.example .env   # fill in the required values (below)
 docker compose -f deploy/docker-compose.yml up -d --build
 ```
 
-The compose stack runs three services: the app, Postgres 16 with pgvector, and Caddy (automatic TLS). Point your domain's DNS at the host and set `APP_DOMAIN` + `APP_URL`. **Migrations apply automatically at boot** — no manual step.
+The compose stack runs three services: the app, Postgres 16 with pgvector, and Caddy (automatic TLS). Point your domain's DNS at the host and set `APP_DOMAIN` + `APP_URL`. **Migrations apply automatically at boot** (the pgvector extension is enabled too) — no manual step. On an external database, make sure the `vector` extension is available to your user; the app runs `CREATE EXTENSION IF NOT EXISTS vector` first.
 
 ## Required environment
 

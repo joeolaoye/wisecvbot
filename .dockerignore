@@ -3,7 +3,8 @@ dist
 coverage
 .git
 .env
+.env.*
+!.env.example
 *.log
 docs
 tests
-drizzle
