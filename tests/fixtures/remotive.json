@@ -1,0 +1,16 @@
+{
+  "jobs": [
+    {
+      "id": 999001,
+      "url": "https://remotive.com/remote-jobs/software/devops-engineer-999001",
+      "title": "DevOps Engineer",
+      "company_name": "Acme Cloud",
+      "category": "Software Development",
+      "job_type": "full_time",
+      "candidate_required_location": "Anywhere",
+      "salary": "$120k - $150k",
+      "description": "<p>Kubernetes, Terraform, AWS. Run production infrastructure.</p>",
+      "publication_date": "2026-10-01T10:00:00Z"
+    }
+  ]
+}

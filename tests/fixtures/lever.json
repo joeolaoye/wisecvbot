@@ -1,0 +1,18 @@
+[
+  {
+    "id": "abc-111",
+    "text": "Full-Stack Engineer",
+    "hostedUrl": "https://jobs.lever.co/vercel/abc-111",
+    "categories": { "location": "Remote", "commitment": "Full-time", "team": "Engineering" },
+    "descriptionPlain": "Next.js, React, TypeScript. Ship features end to end.",
+    "descriptionHtml": null
+  },
+  {
+    "id": "abc-112",
+    "text": "Engineering Manager, Platform",
+    "hostedUrl": "https://jobs.lever.co/vercel/abc-112",
+    "categories": { "location": "San Francisco, CA" },
+    "descriptionPlain": null,
+    "descriptionHtml": "<p>Lead the platform team. Manage 6-8 engineers.</p>"
+  }
+]

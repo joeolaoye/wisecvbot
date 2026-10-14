@@ -1,0 +1,51 @@
+# WiseCV job-source boards (architecture doc §2.1)
+# Add a board: one line, one PR. `token` is the company's slug on that ATS.
+# Every entry below was verified live via `npm run boards:check` (Oct 2026).
+# Companies move ATSs — run it yourself; dead boards land in dead_letters at
+# ingest and never crash the run.
+boards:
+  # Greenhouse (boards-api.greenhouse.io/v1/boards/<token>/jobs)
+  - { company: Stripe, ats: greenhouse, token: stripe }
+  - { company: Cloudflare, ats: greenhouse, token: cloudflare }
+  - { company: Airbnb, ats: greenhouse, token: airbnb }
+  - { company: Duolingo, ats: greenhouse, token: duolingo }
+  - { company: Reddit, ats: greenhouse, token: reddit }
+  - { company: Pinterest, ats: greenhouse, token: pinterest }
+  - { company: Dropbox, ats: greenhouse, token: dropbox }
+  - { company: Lyft, ats: greenhouse, token: lyft }
+  - { company: Coinbase, ats: greenhouse, token: coinbase }
+  - { company: Roblox, ats: greenhouse, token: roblox }
+  - { company: MongoDB, ats: greenhouse, token: mongodb }
+  - { company: Twilio, ats: greenhouse, token: twilio }
+  - { company: Okta, ats: greenhouse, token: okta }
+  - { company: Anthropic, ats: greenhouse, token: anthropic }
+  - { company: Figma, ats: greenhouse, token: figma }
+  - { company: Datadog, ats: greenhouse, token: datadog }
+  - { company: GitLab, ats: greenhouse, token: gitlab }
+  - { company: Samsara, ats: greenhouse, token: samsara }
+  - { company: Gusto, ats: greenhouse, token: gusto }
+  - { company: Brex, ats: greenhouse, token: brex }
+  - { company: Wise, ats: greenhouse, token: wise }
+  - { company: Intercom, ats: greenhouse, token: intercom }
+  - { company: Mixpanel, ats: greenhouse, token: mixpanel }
+  - { company: Elastic, ats: greenhouse, token: elastic }
+  - { company: Robinhood, ats: greenhouse, token: robinhood }
+  - { company: Instacart, ats: greenhouse, token: instacart }
+  - { company: Riot Games, ats: greenhouse, token: riotgames }
+  - { company: Databricks, ats: greenhouse, token: databricks }
+  - { company: Chime, ats: greenhouse, token: chime }
+  - { company: Affirm, ats: greenhouse, token: affirm }
+  # Lever (api.lever.co/v0/postings/<token>?mode=json)
+  - { company: DocuSign, ats: lever, token: docusign }
+  # Ashby (api.ashbyhq.com/posting-api/job-board/<token>)
+  - { company: Linear, ats: ashby, token: linear }
+  - { company: ClickHouse, ats: ashby, token: clickhouse }
+  - { company: Clerk, ats: ashby, token: clerk }
+  - { company: Plaid, ats: ashby, token: plaid }
+  - { company: Notion, ats: ashby, token: notion }
+  - { company: Supabase, ats: ashby, token: supabase }
+  - { company: Ramp, ats: ashby, token: ramp }
+  - { company: Sanity, ats: ashby, token: sanity }
+  - { company: Mercury, ats: ashby, token: mercury }
+  # Plus aggregators (no config needed): Remotive always on, Adzuna when
+  # ADZUNA_APP_ID/KEY are set. See src/ingestion/.

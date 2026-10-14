@@ -1,0 +1,19 @@
+{
+  "jobs": [
+    {
+      "id": "xyz-1",
+      "title": "ML Engineer",
+      "location": "Remote (Europe)",
+      "isRemote": true,
+      "jobUrl": "https://jobs.ashbyhq.com/linear/xyz-1",
+      "descriptionPlain": "LLM evaluation, Python, PyTorch. Build eval harnesses."
+    },
+    {
+      "id": "xyz-2",
+      "title": "Product Designer",
+      "location": "London, UK",
+      "jobUrl": "https://jobs.ashbyhq.com/linear/xyz-2",
+      "description": "<p>Design interfaces for technical products.</p>"
+    }
+  ]
+}

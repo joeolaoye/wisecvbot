@@ -1,0 +1,48 @@
+# WiseCV — one small host per operator (architecture doc §3)
+
+services:
+  app:
+    build: ..
+    restart: unless-stopped
+    env_file: ../.env
+    environment:
+      # inside compose the db host is the service name, not localhost
+      DATABASE_URL: ${DATABASE_URL_COMPOSE:-postgres://wisecv:wisecv@db:5432/wisecv}
+    depends_on:
+      db:
+        condition: service_healthy
+    expose:
+      - '3000'
+
+  db:
+    image: pgvector/pgvector:pg16
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: wisecv
+      POSTGRES_PASSWORD: wisecv
+      POSTGRES_DB: wisecv
+    volumes:
+      - dbdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U wisecv']
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    ports:
+      - '80:80'
+      - '443:443'
+    environment:
+      DOMAIN: ${APP_DOMAIN:-localhost}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddydata:/data
+    depends_on:
+      - app
+
+volumes:
+  dbdata:
+  caddydata:

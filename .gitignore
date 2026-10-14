@@ -1,0 +1,15 @@
+# dependencies
+node_modules/
+
+# build
+dist/
+coverage/
+
+# secrets & local config — never commit
+.env
+.env.*
+!.env.example
+
+# os/editor noise
+.DS_Store
+*.log

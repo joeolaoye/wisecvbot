@@ -1,0 +1,21 @@
+{
+  "offices": [],
+  "departments": [],
+  "jobs": [
+    {
+      "id": 123456,
+      "title": "Senior Backend Engineer",
+      "absolute_url": "https://boards.greenhouse.io/stripe/jobs/123456",
+      "updated_at": "2026-10-01T00:00:00+00:00",
+      "location": { "name": "Remote (US)" },
+      "content": "<div><p>Build payment APIs with <strong>Python</strong> and Go.</p><ul><li>5+ years experience</li><li>Payments background a plus</li></ul></div>"
+    },
+    {
+      "id": 123457,
+      "title": "Data Engineer",
+      "absolute_url": "https://boards.greenhouse.io/stripe/jobs/123457",
+      "location": { "name": "Seattle, WA" },
+      "content": "<p>dbt, Airflow, Snowflake pipelines.</p>"
+    }
+  ]
+}

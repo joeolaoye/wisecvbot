@@ -1,0 +1,5 @@
+{$DOMAIN}
+
+# The only public surface: TLS terminator + reverse proxy to the app.
+# Bot webhook arrives at /{$TELEGRAM_WEBHOOK_PATH} — see src/server.ts.
+reverse_proxy app:3000
