@@ -16,13 +16,14 @@ The compose stack runs three services: the app, Postgres 16 with pgvector, and C
 | `DATABASE_URL` | Compose provides `postgres://wisecv:wisecv@db:5432/wisecv` |
 | `TELEGRAM_BOT_TOKEN` | Create a bot with [@BotFather](https://t.me/BotFather) |
 | `CV_ENCRYPTION_KEY` | `openssl rand -base64 32` — **back this up**; CVs are undecryptable without it |
-| `OPENAI_API_KEY` | Any OpenAI-compatible provider; or set `OPENAI_BASE_URL` to an Ollama endpoint for fully-local |
+| `OPENAI_API_KEY` | Chat when `LLM_PROVIDER=openai` (the default), and **always** embeddings — Anthropic has no embeddings API |
+| `ANTHROPIC_API_KEY` | Chat when `LLM_PROVIDER=anthropic` (Claude) |
 | `TELEGRAM_WEBHOOK_SECRET` | **Required when `APP_URL` is set** (webhook mode refuses to boot without it) — `openssl rand -hex 32` |
 | `APP_URL` | Your public HTTPS URL — sets webhook mode. Omit for long-polling (dev) |
 
-Optional: `ADZUNA_APP_ID/KEY` (aggregator coverage), `DAILY_LLM_BUDGET_CENTS` (default 500), `LLM_CENTS_PER_1K_TOKENS` (budget cost estimate — the default 1¢/1k over-estimates gpt-4o-mini ~20×, which drains the nominal budget early on the safe side; set 0.2 for tighter accounting), `MAX_MATCH_ALERTS_PER_DAY` (default 3), `CHAT_MODEL`/`EMBEDDING_MODEL` (defaults: gpt-4o-mini / text-embedding-3-small).
+Optional: `LLM_PROVIDER` (`openai` default | `anthropic`), `CHAT_MODEL` (overrides the provider default: gpt-4o-mini / claude-haiku-4-5), `ADZUNA_APP_ID/KEY` (aggregator coverage), `DAILY_LLM_BUDGET_CENTS` (default 500), `LLM_CENTS_PER_1K_TOKENS` (budget cost estimate — the default 1¢/1k over-estimates gpt-4o-mini ~20×, which drains the nominal budget early on the safe side; set 0.2 for tighter accounting), `MAX_MATCH_ALERTS_PER_DAY` (default 3), `EMBEDDING_MODEL` (default text-embedding-3-small).
 
-**Ollama note:** embeddings require a 1536-dimension model to match the schema (e.g. a re-embedding migration, or use nomic-embed-text with a dims migration). Simplest local path: keep a hosted embedding key and run only the chat model locally.
+**Ollama note:** set `OPENAI_BASE_URL` to your Ollama endpoint for fully-local — it serves both chat (as the openai-compatible provider) and embeddings. Embeddings must be 1536-dimension to match the schema (e.g. nomic-embed-text with a dims migration); simplest local path: run chat on Ollama and keep a hosted embeddings key.
 
 ## Operating
 

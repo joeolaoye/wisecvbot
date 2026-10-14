@@ -19,11 +19,13 @@
     "start": "node dist/main.js",
     "ingest:once": "tsx src/cli/ingest.ts",
     "match:once": "tsx src/cli/match.ts",
+    "llm:check": "tsx src/cli/llm-check.ts",
     "boards:check": "tsx scripts/smoke-boards.ts",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate"
   },
   "dependencies": {
+    "@ai-sdk/anthropic": "^4.0.79",
     "@ai-sdk/openai": "^4.0.93",
     "ai": "^7.0.140",
     "drizzle-orm": "^0.45.4",

@@ -1,5 +1,8 @@
 import { z } from 'zod'
 
+export const LLM_PROVIDERS = ['openai', 'anthropic'] as const
+export type LlmProvider = (typeof LLM_PROVIDERS)[number]
+
 /**
  * All configuration comes from the environment — no config files with secrets.
  * The app refuses to boot on missing/invalid values (architecture §8: fail loud,
@@ -24,10 +27,14 @@ const envSchema = z.object({
   /** 32 bytes base64 — generate with: openssl rand -base64 32 */
   CV_ENCRYPTION_KEY: z.string().min(40),
 
-  // LLM (OpenAI-compatible; set OPENAI_BASE_URL to an Ollama endpoint for fully-local)
+  // LLM providers — chat on LLM_PROVIDER, embeddings on the OpenAI-compatible
+  // provider (Anthropic has no embeddings API). Ollama: set OPENAI_BASE_URL.
+  LLM_PROVIDER: z.enum(LLM_PROVIDERS).default('openai'),
   OPENAI_API_KEY: z.string().optional(),
   OPENAI_BASE_URL: z.string().optional(),
-  CHAT_MODEL: z.string().default('gpt-4o-mini'),
+  ANTHROPIC_API_KEY: z.string().optional(),
+  /** Overrides the provider's default chat model when set. */
+  CHAT_MODEL: z.string().optional(),
   EMBEDDING_MODEL: z.string().default('text-embedding-3-small'),
   DAILY_LLM_BUDGET_CENTS: z.coerce.number().int().min(0).default(500),
   /** Conservative cost estimate for budget accounting (default over-estimates, which is the safe side). */

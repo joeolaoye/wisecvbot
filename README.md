@@ -14,7 +14,7 @@ Message **@wisebot** on Telegram (the author's instance) — register in under 2
 
 ## Run your own
 
-Requirements: Docker, a Telegram bot token ([@BotFather](https://t.me/BotFather)), an OpenAI-compatible API key (or [Ollama](https://ollama.com) for fully-local), a Postgres with the pgvector extension (compose provides one).
+Requirements: Docker, a Telegram bot token ([@BotFather](https://t.me/BotFather)), an OpenAI **or** Anthropic API key (chat + reviews run on either — `LLM_PROVIDER`; embeddings use the OpenAI-compatible provider, or [Ollama](https://ollama.com) for fully-local), a Postgres with the pgvector extension (compose provides one).
 
 ```bash
 git clone https://github.com/wisecv/wisecv && cd wisecv
