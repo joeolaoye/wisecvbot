@@ -1,0 +1,94 @@
+name: Deploy to EC2
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: wisecv-production
+  cancel-in-progress: false
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run build
+
+  deploy:
+    needs: verify
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    environment: production
+    steps:
+      - uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6.3.0
+        with:
+          role-to-assume: arn:aws:iam::797606048938:role/wisecvbot-github-deploy
+          aws-region: eu-west-1
+
+      - name: Deploy through Systems Manager
+        env:
+          INSTANCE_ID: i-0bfc1b710b0103c39
+          REVISION: ${{ github.sha }}
+        run: |
+          parameters=$(jq -n --arg revision "$REVISION" '{commands: [
+            "sudo git -C /opt/wisecv/app fetch --depth 1 origin " + $revision,
+            "sudo git -C /opt/wisecv/app checkout --force --detach " + $revision,
+            "sudo bash /opt/wisecv/app/deploy/ec2-deploy.sh " + $revision
+          ]}')
+
+          command_id=$(aws ssm send-command \
+            --document-name AWS-RunShellScript \
+            --instance-ids "$INSTANCE_ID" \
+            --comment "Deploy WiseCV $REVISION" \
+            --timeout-seconds 1800 \
+            --parameters "$parameters" \
+            --query 'Command.CommandId' \
+            --output text)
+
+          for attempt in $(seq 1 120); do
+            status=$(aws ssm get-command-invocation \
+              --command-id "$command_id" \
+              --instance-id "$INSTANCE_ID" \
+              --query Status \
+              --output text)
+
+            case "$status" in
+              Success)
+                break
+                ;;
+              Pending|InProgress|Delayed)
+                sleep 15
+                ;;
+              *)
+                aws ssm get-command-invocation \
+                  --command-id "$command_id" \
+                  --instance-id "$INSTANCE_ID" \
+                  --query '{Status:Status,Output:StandardOutputContent,Error:StandardErrorContent}'
+                exit 1
+                ;;
+            esac
+
+            if [ "$attempt" -eq 120 ]; then
+              echo "Deployment did not finish within 30 minutes" >&2
+              exit 1
+            fi
+          done
+
+          aws ssm get-command-invocation \
+            --command-id "$command_id" \
+            --instance-id "$INSTANCE_ID" \
+            --query '{Status:Status,Output:StandardOutputContent,Error:StandardErrorContent}'
