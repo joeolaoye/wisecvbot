@@ -84,6 +84,11 @@ async function ensureBudget(configured: boolean): Promise<void> {
   }
 }
 
+/** True when today's spend has reached the cap — surfaces honest UX instead of generic failures. */
+export async function budgetExhausted(): Promise<boolean> {
+  return (await spendCentsToday()) >= env.DAILY_LLM_BUDGET_CENTS
+}
+
 function costCents(totalTokens: number): number {
   // env-configurable estimate; defaults conservative (over-estimates = safe side)
   return Math.max(1, Math.ceil((totalTokens / 1000) * env.LLM_CENTS_PER_1K_TOKENS))

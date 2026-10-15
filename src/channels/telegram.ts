@@ -12,6 +12,7 @@ import {
 import { extractProfileFromCv } from '../pipeline/extract.js'
 import { embedProfile } from '../pipeline/embed.js'
 import { encryptCv } from '../security/encryption.js'
+import { budgetExhausted } from '../llm.js'
 import { getMatch, logEvent, markFeedback } from '../storage/ops.js'
 import type { Job } from '../storage/schema.js'
 import type { SubscriberLite } from '../storage/subscribers.js'
@@ -153,6 +154,7 @@ const awaitingSkills = new Set<number>()
 const awaitingEdit = new Set<number>()
 const manualRole = new Map<string, RoleFamily>()
 const pendingSeniority = new Map<string, Seniority>()
+const recentStarts = new Map<string, number>()
 
 // ── Copy ────────────────────────────────────────────────────────────
 
@@ -320,10 +322,11 @@ async function handleCvUpload(
     const profile = await extractProfileFromCv(text)
     if (!profile) {
       restoreStatus(sub)
-      await ctx.reply(
-        "Something went wrong reading your CV — mind trying again, or answering a few questions instead?",
-        { reply_markup: cvKeyboard() },
-      )
+      // honest reason — a spent budget reads as "broken" if we say nothing
+      const why = (await budgetExhausted())
+        ? "My AI budget for today is used up \u{1F634} I've saved your CV — answer 5 quick questions instead, or try again tomorrow"
+        : "Something went wrong reading your CV \u{2014} mind trying again, or answering a few questions instead?"
+      await ctx.reply(why, { reply_markup: cvKeyboard() })
       return
     }
 
@@ -344,7 +347,13 @@ function registerHandlers(bot: Bot) {
     const sub = await fetchSub(ctx)
     clearManualState(sub)
     if (!sub || sub.status === 'new') {
-      // nothing is persisted until the consent tap — welcome only
+      // nothing is persisted until the consent tap — welcome only. A quick
+      // double-tap of /start (or a redelivered update) shouldn't spam two
+      // welcome messages.
+      const key = userId(ctx)
+      const last = recentStarts.get(key) ?? 0
+      if (Date.now() - last < 10_000) return
+      recentStarts.set(key, Date.now())
       await ctx.reply(WELCOME, { reply_markup: consentKeyboard() })
       return
     }
@@ -630,6 +639,21 @@ function registerHandlers(bot: Bot) {
 
 export function createBot(): Bot {
   const bot = new Bot(requireBotEnv())
+  // Telegram redelivers updates when an ack is missed (restarts, network) —
+  // dedupe by update_id so a handler never runs twice for one update
+  const seen = new Set<number>()
+  const seenOrder: number[] = []
+  bot.use((ctx, next) => {
+    const id = ctx.update.update_id
+    if (seen.has(id)) return
+    seen.add(id)
+    seenOrder.push(id)
+    if (seenOrder.length > 200) {
+      const old = seenOrder.shift()
+      if (old !== undefined) seen.delete(old)
+    }
+    return next()
+  })
   // per-user sequencing: a double-tap must not run two handlers over the same
   // subscriber row concurrently (promise chain keyed by user id)
   const chains = new Map<string, Promise<unknown>>()
