@@ -5,6 +5,20 @@ import { logger } from './log.js'
 import { countCompanies, countJobs } from './storage/jobs.js'
 import { deadLetterCount } from './storage/ops.js'
 
+/** Origins allowed to read /healthz cross-origin (the landing page's live counter). */
+const ALLOWED_ORIGINS = [
+  /^https:\/\/wisecv\.co$/,
+  /^https:\/\/www\.wisecv\.co$/,
+  /^https:\/\/([a-z0-9-]+\.)*wisecv\.pages\.dev$/, // production + preview deployments
+]
+
+function corsHeaders(req: IncomingMessage): Record<string, string> {
+  const origin = req.headers.origin
+  return origin && ALLOWED_ORIGINS.some((re) => re.test(origin))
+    ? { 'access-control-allow-origin': origin }
+    : {}
+}
+
 /**
  * The only public surface (behind Caddy TLS): healthz + (when a bot runs) the
  * Telegram webhook. grammY validates the X-Telegram-Bot-Api-Secret-Token
@@ -38,7 +52,7 @@ export function startServer(bot?: Bot): void {
         ])
         res.writeHead(200, {
           'content-type': 'application/json',
-          'access-control-allow-origin': 'https://wisecv.co', // landing page live counter
+          ...corsHeaders(req),
         })
         res.end(JSON.stringify({ ok: true, jobs, companies, deadLetters }))
         return
