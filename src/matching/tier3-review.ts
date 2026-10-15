@@ -63,7 +63,11 @@ Salary: ${salary}
 ${truncate(job.descriptionText, 6000)}`,
 )}
 
-Decide: is this job worth this person's attention given their confirmed profile? Be honest — a false positive costs the user trust. whyThisFits must reference their actual profile, not generic praise.
+Decide: is this job worth this person's attention given their confirmed profile? Be honest — a false positive costs the user trust.
+
+Voice: whyThisFits, redFlags, and questions are shown to the job seeker verbatim in a chat message. Address them directly as "you" — e.g. "Requires strong TypeScript skills, which is one of the technologies you are proficient in" — never "the job seeker", "the user", "the candidate", or third-person "their".
+
+whyThisFits must reference the actual confirmed profile, not generic praise.
 
 Salary guidance: many good postings omit compensation. An UNSTATED salary is never a reason to reject — only reject on salary when the posting states a figure that is clearly below the floor, and only compare like currencies (a USD floor vs a stated EUR/CAD figure is not a violation). If the salary is stated in the description text, use it.
 
