@@ -12,16 +12,19 @@ import { deadLetterCount } from './storage/ops.js'
  */
 export function startServer(bot?: Bot): void {
   const webhookPath = `/${env.TELEGRAM_WEBHOOK_PATH.replace(/^\//, '')}`
+  // Build the webhook handler ONLY in webhook mode — webhookCallback() disables
+  // bot.start() as a side effect, which would break long-polling mode.
   // CV upload + parse + LLM extraction can exceed grammY's default 10s; when
   // it does, answer 200 anyway (onTimeout: 'return') so Telegram doesn't retry
   // the update into the still-running handler — duplicate replies and spend.
-  const handleWebhook = bot
-    ? webhookCallback(bot, 'http', {
-        secretToken: env.TELEGRAM_WEBHOOK_SECRET,
-        onTimeout: 'return',
-        timeoutMilliseconds: 120_000,
-      })
-    : null
+  const handleWebhook =
+    bot && env.APP_URL
+      ? webhookCallback(bot, 'http', {
+          secretToken: env.TELEGRAM_WEBHOOK_SECRET,
+          onTimeout: 'return',
+          timeoutMilliseconds: 120_000,
+        })
+      : null
 
   const server = createServer(async (req: IncomingMessage, res: ServerResponse) => {
     try {

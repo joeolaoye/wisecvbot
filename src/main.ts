@@ -29,7 +29,9 @@ async function main(): Promise<void> {
       await bot.api.setWebhook(url, { secret_token: env.TELEGRAM_WEBHOOK_SECRET })
       logger.info('webhook_registered', { url })
     } else {
-      // dev: long polling — no public URL needed
+      // dev: long polling — no public URL needed. Drop any stale webhook first:
+      // grammY refuses to poll while a webhook is registered on the token.
+      await bot.api.deleteWebhook({ drop_pending_updates: false })
       void bot.start({
         onStart: () => logger.info('bot_started_polling'),
       })
