@@ -1,4 +1,4 @@
-import { and, count, desc, eq, gte, inArray, isNull, lt } from 'drizzle-orm'
+import { and, count, countDistinct, desc, eq, gte, inArray, isNull, lt } from 'drizzle-orm'
 import { db } from './db.js'
 import { jobs, type Job } from './schema.js'
 import type { JobStructured } from '../domain/job.js'
@@ -152,6 +152,11 @@ export async function jobsMissingEmbedding(limit: number): Promise<Job[]> {
 
 export async function countJobs(): Promise<number> {
   const [row] = await db.select({ value: count() }).from(jobs)
+  return Number(row?.value ?? 0)
+}
+
+export async function countCompanies(): Promise<number> {
+  const [row] = await db.select({ value: countDistinct(jobs.company) }).from(jobs)
   return Number(row?.value ?? 0)
 }
 

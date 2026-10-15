@@ -2,7 +2,7 @@ import { createServer, type IncomingMessage, type ServerResponse } from 'node:ht
 import { webhookCallback, type Bot } from 'grammy'
 import { env } from './config/env.js'
 import { logger } from './log.js'
-import { countJobs } from './storage/jobs.js'
+import { countCompanies, countJobs } from './storage/jobs.js'
 import { deadLetterCount } from './storage/ops.js'
 
 /**
@@ -31,9 +31,16 @@ export function startServer(bot?: Bot): void {
       // compare on pathname only — monitors/CDNs append query strings to health probes
       const pathname = req.url ? new URL(req.url, 'http://localhost').pathname : '/'
       if (req.method === 'GET' && pathname === '/healthz') {
-        const [jobs, deadLetters] = await Promise.all([countJobs(), deadLetterCount()])
-        res.writeHead(200, { 'content-type': 'application/json' })
-        res.end(JSON.stringify({ ok: true, jobs, deadLetters }))
+        const [jobs, companies, deadLetters] = await Promise.all([
+          countJobs(),
+          countCompanies(),
+          deadLetterCount(),
+        ])
+        res.writeHead(200, {
+          'content-type': 'application/json',
+          'access-control-allow-origin': 'https://wisecv.co', // landing page live counter
+        })
+        res.end(JSON.stringify({ ok: true, jobs, companies, deadLetters }))
         return
       }
       if (req.method === 'POST' && pathname === webhookPath && handleWebhook) {
