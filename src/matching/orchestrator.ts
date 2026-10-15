@@ -31,6 +31,12 @@ const TIER2_TOP_K = 5
 const TIER2_FLOOR = 0.3
 /** Without an LLM review, tier-2 evidence must clear a higher bar before delivery. */
 const FALLBACK_EXTRA_MARGIN = 0.05
+/**
+ * Reviewers occasionally return match:true with a near-zero fitScore (a fit-8
+ * alert was observed live). The boolean alone doesn't gate that — this floor
+ * does, regardless of what the model says.
+ */
+const MIN_DELIVERABLE_FIT = 30
 
 export interface MatchRunSummary {
   subscribersConsidered: number
@@ -152,13 +158,14 @@ async function runForSubscriber(
       continue
     }
     const effective = review ?? fallbackReview(cand.simScore, job)
-    if (!effective.match) {
+    if (!effective.match || effective.fitScore < MIN_DELIVERABLE_FIT) {
       // rejected reviews leave a trace — otherwise tuning the reviewer is blind
       logger.info('tier3_rejected', {
         jobId: job.id,
         company: job.company,
         title: job.title.slice(0, 50),
         fitScore: effective.fitScore,
+        reason: !effective.match ? 'reviewer-rejected' : 'below-fit-floor',
         why: effective.whyThisFits[0]?.slice(0, 140),
         flag: effective.redFlags[0]?.slice(0, 140) ?? null,
       })
