@@ -30,6 +30,8 @@ Migrations apply automatically at boot. Without `APP_URL` set the bot runs in lo
 
 Merges to `main` run the verification suite and deploy the exact commit to the production EC2 host through AWS Systems Manager. GitHub authenticates with OIDC, so the repository does not store long-lived AWS access keys. The deploy script health-checks the new container and restores the previous image if startup fails.
 
+The production container publishes its HTTP server on host port 80. Only `/healthz` is served in long-polling mode; Telegram webhook handling is enabled only when `APP_URL` and its webhook secret are configured.
+
 ## How it works
 
 ```

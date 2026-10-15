@@ -17,6 +17,7 @@ run_app() {
   docker run -d \
     --name wisecv-app \
     --network wisecv \
+    --publish 80:3000 \
     --restart unless-stopped \
     --memory 640m \
     --memory-swap 1280m \
