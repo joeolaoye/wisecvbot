@@ -16,6 +16,7 @@ One host, one Postgres, one Node process (bot + scheduler + webhook server), no 
 | `src/security/*` | CV envelope encryption (AES-256-GCM), injection-guarded prompt framing |
 | `src/storage/*` | Drizzle schema + repositories; every mutation goes through these |
 | `src/llm.ts` | Single LLM entry point behind a provider registry (OpenAI default, Anthropic/Claude; adding a provider = one registry entry + one `@ai-sdk/*` package). Chat on `LLM_PROVIDER`; embeddings always on the OpenAI-compatible provider (Anthropic has no embeddings API). Hard daily budget gate before every call, 60s timeouts, spend accounting |
+| `src/analytics.ts` | Optional PostHog product analytics: key-gated (OFF without `POSTHOG_API_KEY`), pseudonymous event counts only (`sub_<id>` — never message/CV content or Telegram identity), per-subscriber `/analytics` opt-out, never throws |
 
 ## Invariants (enforced in code, tested where possible)
 

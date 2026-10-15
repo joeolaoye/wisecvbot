@@ -1,0 +1,1 @@
+ALTER TABLE "subscribers" ADD COLUMN "analytics_opt_out" boolean DEFAULT false NOT NULL;

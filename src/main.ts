@@ -3,6 +3,7 @@ import { checkConnection, closeDb, db, pool } from './storage/db.js'
 import { createBot, telegramNotifier } from './channels/telegram.js'
 import { env } from './config/env.js'
 import type { Notifier } from './channels/base.js'
+import { closeAnalytics } from './analytics.js'
 import { logger } from './log.js'
 import { schedulerIdle, startScheduler } from './scheduler.js'
 import { startServer } from './server.js'
@@ -62,6 +63,7 @@ async function main(): Promise<void> {
     for (let i = 0; i < 20 && !schedulerIdle(); i++) {
       await new Promise((r) => setTimeout(r, 500))
     }
+    await closeAnalytics()
     await closeDb()
     process.exit(0)
   }

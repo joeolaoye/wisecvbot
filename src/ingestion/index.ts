@@ -1,5 +1,6 @@
 import { defaultBoardsPath, loadBoardsFromFile, type AtsName, type Board } from '../config/boards.js'
 import { env } from '../config/env.js'
+import { track } from '../analytics.js'
 import type { RawJob } from '../domain/job.js'
 import { logger } from '../log.js'
 import { extractJobStructured } from '../pipeline/extract.js'
@@ -129,6 +130,7 @@ function finish(summary: IngestSummary, enriched: number): Promise<IngestSummary
   // awaited: the CLI closes the DB pool right after runIngestion returns —
   // a fire-and-forget insert here dies with the pool
   return logEvent(null, 'ingest_run', { ...summary }).then(() => {
+    track(null, 'ingest_run', { ...summary })
     logger.info('ingest_run', { ...summary })
     return summary
   })

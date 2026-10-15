@@ -13,6 +13,7 @@ import { extractProfileFromCv } from '../pipeline/extract.js'
 import { embedProfile } from '../pipeline/embed.js'
 import { encryptCv } from '../security/encryption.js'
 import { budgetExhausted } from '../llm.js'
+import { track } from '../analytics.js'
 import { getMatch, logEvent, markFeedback } from '../storage/ops.js'
 import type { Job } from '../storage/schema.js'
 import type { SubscriberLite } from '../storage/subscribers.js'
@@ -22,6 +23,7 @@ import {
   createIfAbsent,
   getByChannelUser,
   purge,
+  setAnalyticsOptOut,
   setCv,
   setConsent,
   setProfileDraft,
@@ -160,7 +162,7 @@ const recentStarts = new Map<string, number>()
 
 const WELCOME = `Hi, I'm WiseBot 👋 I find tech jobs that fit you — up to ${env.MAX_MATCH_ALERTS_PER_DAY} a day, each reviewed by AI.
 
-The deal: I store your CV and the profile I build from it. You can see it (/profile), pause it (/pause), or delete everything (/delete) anytime.`
+The deal: I store your CV and the profile I build from it, and I count anonymous usage events (features used, buttons tapped — never message or CV content) to improve the bot. You can see everything (/profile), pause it (/pause), delete it all (/delete), or turn analytics off (/analytics) anytime.`
 
 const CV_PROMPT = 'Great. Send me your CV — PDF or Word.'
 
@@ -308,10 +310,12 @@ async function handleCvUpload(
 
     // store FIRST (encrypted); a parse failure never loses the file
     await setCv(sub.id, encryptCv(buffer), filename)
+    track(sub, 'cv_uploaded')
     const text = await extractCvText(buffer, filename)
 
     if (text.replace(/\s/g, '').length < 100) {
       restoreStatus(sub)
+      track(sub, 'cv_parse_failed', { reason: 'unreadable' })
       await ctx.reply(
         "I couldn't read much text from that file (scanned/image PDFs trip me up). Try a text-based PDF, or:",
         { reply_markup: cvKeyboard() },
@@ -322,6 +326,7 @@ async function handleCvUpload(
     const profile = await extractProfileFromCv(text)
     if (!profile) {
       restoreStatus(sub)
+      track(sub, 'cv_parse_failed', { reason: 'extraction' })
       // honest reason — a spent budget reads as "broken" if we say nothing
       const why = (await budgetExhausted())
         ? "My AI budget for today is used up \u{1F634} I've saved your CV — answer 5 quick questions instead, or try again tomorrow"
@@ -370,16 +375,50 @@ function registerHandlers(bot: Bot) {
         'WiseCV commands:',
         '/profile — see & edit what I match against',
         '/pause · /resume — stop/start match alerts',
+        '/analytics — anonymous usage counting on/off',
         '/delete — wipe everything (CV included)',
       ].join('\n'),
     ),
   )
+
+  bot.command('analytics', async (ctx) => {
+    const sub = await fetchSub(ctx)
+    if (!sub) return void ctx.reply("Let's get you set up first — /start")
+    await ctx.reply(
+      `Anonymous usage counting is ${sub.analyticsOptOut ? 'OFF' : 'ON'} for you.\nWhat gets counted: feature usage and button taps, tied to an anonymous id — never message text, CV content, or your Telegram identity.`,
+      {
+        reply_markup: new InlineKeyboard()
+          .text(sub.analyticsOptOut ? 'Turn ON' : 'Turn OFF', sub.analyticsOptOut ? 'ana:on' : 'ana:off')
+          .text('Keep as is', 'ana:noop'),
+      },
+    )
+  })
+
+  bot.callbackQuery('ana:on', async (ctx) => {
+    const sub = await ensureSub(ctx)
+    await setAnalyticsOptOut(sub.id, false)
+    track({ ...sub, analyticsOptOut: false }, 'analytics_toggled', { optOut: false })
+    await ctx.answerCallbackQuery('Counting on')
+    await ctx.reply('Anonymous counting is back ON. Thanks for helping improve the bot 🙏')
+  })
+
+  bot.callbackQuery('ana:off', async (ctx) => {
+    const sub = await ensureSub(ctx)
+    await setAnalyticsOptOut(sub.id, true)
+    await ctx.answerCallbackQuery('Counting off')
+    await ctx.reply('Done — no usage events are counted for you from now on.')
+  })
+
+  bot.callbackQuery('ana:noop', async (ctx) => {
+    await ctx.answerCallbackQuery('Kept as is')
+  })
 
   bot.command('pause', async (ctx) => {
     const sub = await fetchSub(ctx)
     if (!sub) return void ctx.reply("Let's get you set up first — /start")
     if (sub.status === 'active') await setStatus(sub.id, 'paused')
     await logEvent(sub.id, 'pause')
+    track(sub, 'paused')
     await ctx.reply('Paused ⏸ No more alerts. /resume when you want back in.')
   })
 
@@ -388,6 +427,7 @@ function registerHandlers(bot: Bot) {
     if (!sub) return void ctx.reply("Let's get you set up first — /start")
     if (sub.status === 'paused') await setStatus(sub.id, 'active')
     await logEvent(sub.id, 'resume')
+    track(sub, 'resumed')
     await ctx.reply("Resumed ▶️ You're back in tomorrow's matches.")
   })
 
@@ -399,6 +439,7 @@ function registerHandlers(bot: Bot) {
       return
     }
     awaitingEdit.add(sub.id)
+    track(sub, 'profile_viewed')
     await ctx.reply(formatProfileCard(sub.profile))
     await ctx.reply(
       'To change something, reply with edits like:\nseniority: staff\nskills: +Rust -PHP\nsalary: 160k\nremote: only',
@@ -420,6 +461,7 @@ function registerHandlers(bot: Bot) {
     await setConsent(sub.id)
     await setStatus(sub.id, 'awaiting_cv')
     await logEvent(sub.id, 'consent_granted')
+    track(sub, 'consent_granted')
     await ctx.answerCallbackQuery()
     await ctx.reply(CV_PROMPT, { reply_markup: cvKeyboard() })
   })
@@ -437,6 +479,7 @@ function registerHandlers(bot: Bot) {
   bot.callbackQuery('del:yes', async (ctx) => {
     const sub = await fetchSub(ctx)
     if (!sub) return void ctx.answerCallbackQuery('Already gone')
+    track(sub, 'purge_requested')
     await purge(sub.id) // events & matches cascade — verified against the DB, not the UI
     await ctx.answerCallbackQuery('Deleted')
     await ctx.reply('Done — CV, profile, and history are gone. /start if you ever come back. 👋')
@@ -500,6 +543,7 @@ function registerHandlers(bot: Bot) {
       return
     }
     await ctx.answerCallbackQuery()
+    track(sub, 'profile_confirmed')
     // two quick follow-ups for what CVs (and manual answers) never say
     await ctx.reply('Quick last two — salary floor, I only send jobs at or above it:', {
       reply_markup: salaryKeyboard('msal2'),
@@ -533,6 +577,7 @@ function registerHandlers(bot: Bot) {
     const action = verdict === 'i' ? 'interested' : verdict === 'n' ? 'rejected' : 'wrong_direction'
     await markFeedback(matchId, action)
     await logEvent(sub.id, `feedback_${action}`, { matchId })
+    track(sub, 'feedback_tapped', { verdict: action })
     if (verdict === 'i') {
       await adjustThreshold(sub.id, -0.01) // liked it → widen slightly
       await ctx.answerCallbackQuery({ text: 'Noted — more like this.' })
@@ -566,10 +611,13 @@ function registerHandlers(bot: Bot) {
       })
     }
     if (sub) await logEvent(sub.id, 'wrong_direction', { matchId, reason })
+    track(sub, 'wrong_direction', { reason })
     await ctx.answerCallbackQuery({ text: 'Got it — profile updated.' })
   })
 
   bot.callbackQuery(/^tailor:\d+$/, async (ctx) => {
+    const sub = await fetchSub(ctx)
+    track(sub, 'tailor_tapped') // the pricing-demand signal — placeholder or not
     await ctx.answerCallbackQuery()
     await ctx.reply('CV tailoring ships in v0.2 — your confirmed profile is saved and ready for it. 🚧')
   })
@@ -612,6 +660,7 @@ function registerHandlers(bot: Bot) {
       manualRole.delete(sub.channelUserId)
       pendingSeniority.delete(sub.channelUserId)
       await setProfileDraft(sub.id, profile)
+      track(sub, 'manual_fallback_done')
       await sendConfirmationCard(ctx, profile)
       return
     }
@@ -622,6 +671,7 @@ function registerHandlers(bot: Bot) {
       await updateProfile(sub.id, profile)
       // field names only — values are user content and stay out of the events table
       await logEvent(sub.id, 'profile_edited', { fields: applied.map((a) => a.split(' → ')[0]) })
+      track(sub, 'profile_edited', { fields: applied.length })
       await ctx.reply(
         applied.length > 0
           ? `Updated: ${applied.join('; ')}${ignored.length > 0 ? `\n(ignored: ${ignored.join('; ')})` : ''}`

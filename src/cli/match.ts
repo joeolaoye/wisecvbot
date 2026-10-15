@@ -2,6 +2,7 @@ import { checkConnection, closeDb } from '../storage/db.js'
 import { runDailyMatch } from '../matching/orchestrator.js'
 import { createBot, telegramNotifier } from '../channels/telegram.js'
 import { env } from '../config/env.js'
+import { closeAnalytics } from '../analytics.js'
 import { logger } from '../log.js'
 import type { Notifier } from '../channels/base.js'
 
@@ -29,6 +30,7 @@ async function main() {
 
   const summary = await runDailyMatch(notifier)
   console.table(summary)
+  await closeAnalytics()
   await closeDb()
 }
 

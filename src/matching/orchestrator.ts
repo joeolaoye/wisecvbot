@@ -3,6 +3,7 @@ import type { Notifier } from '../channels/base.js'
 import { logger } from '../log.js'
 import { embedProfile } from '../pipeline/embed.js'
 import { normalizeTitle } from '../pipeline/dedupe.js'
+import { track } from '../analytics.js'
 import type { SubscriberLite } from '../storage/subscribers.js'
 import { jobsByIds, jobsSince, type JobLite } from '../storage/jobs.js'
 import {
@@ -77,6 +78,7 @@ export async function runDailyMatch(notifier: Notifier): Promise<MatchRunSummary
   }
 
   await logEvent(null, 'match_run', { ...summary })
+  track(null, 'match_run', { ...summary })
   logger.info('match_run', { ...summary })
   return summary
 }
@@ -186,6 +188,7 @@ async function runForSubscriber(
       await markSent(matchId)
       allowance--
       summary.alertsSent++
+      track(sub, 'match_delivered', { fitScore: effective.fitScore, roleFamily: job.roleFamily })
     }
   }
 }

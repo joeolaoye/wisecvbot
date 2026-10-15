@@ -9,7 +9,6 @@ import type { Profile } from '../domain/job.js'
  * updates.
  */
 export type SubscriberLite = Omit<Subscriber, 'cvBlob' | 'cvFilename'>
-
 const liteColumns = {
   id: subscribers.id,
   channel: subscribers.channel,
@@ -18,6 +17,7 @@ const liteColumns = {
   profile: subscribers.profile,
   profileEmbedding: subscribers.profileEmbedding,
   matchThreshold: subscribers.matchThreshold,
+  analyticsOptOut: subscribers.analyticsOptOut,
   consentAt: subscribers.consentAt,
   createdAt: subscribers.createdAt,
   updatedAt: subscribers.updatedAt,
@@ -107,6 +107,13 @@ export async function adjustThreshold(id: number, delta: number): Promise<void> 
       matchThreshold: sql`greatest(0.35, least(0.9, ${subscribers.matchThreshold} + ${delta}))`,
       updatedAt: new Date(),
     })
+    .where(eq(subscribers.id, id))
+}
+
+export async function setAnalyticsOptOut(id: number, optOut: boolean): Promise<void> {
+  await db
+    .update(subscribers)
+    .set({ analyticsOptOut: optOut, updatedAt: new Date() })
     .where(eq(subscribers.id, id))
 }
 

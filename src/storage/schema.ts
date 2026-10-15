@@ -76,6 +76,8 @@ export const subscribers = pgTable(
     cvBlob: bytea('cv_blob'),
     cvFilename: text('cv_filename'),
     matchThreshold: doublePrecision('match_threshold').notNull().default(0.62),
+    /** Analytics is pseudonymous + disclosed; this is the per-subscriber opt-out. */
+    analyticsOptOut: boolean('analytics_opt_out').notNull().default(false),
     consentAt: timestamp('consent_at', { withTimezone: true }),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
