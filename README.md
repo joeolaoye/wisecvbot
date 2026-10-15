@@ -26,6 +26,10 @@ docker compose -f deploy/docker-compose.yml up -d --build
 
 Migrations apply automatically at boot. Without `APP_URL` set the bot runs in long-polling mode — perfect for local testing. Full guide: [docs/self-hosting.md](docs/self-hosting.md).
 
+## Production deployment
+
+Merges to `main` run the verification suite and deploy the exact commit to the production EC2 host through AWS Systems Manager. GitHub authenticates with OIDC, so the repository does not store long-lived AWS access keys. The deploy script health-checks the new container and restores the previous image if startup fails.
+
 ## How it works
 
 ```
