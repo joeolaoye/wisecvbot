@@ -6,7 +6,7 @@
 
 - **No scraping** — reads the official public JSON feeds of Greenhouse, Lever, and Ashby job boards, plus free aggregators
 - **CV-first onboarding** — send your CV, the agent extracts your profile, **you ratify it** (that confirmation is the only thing matching ever reads)
-- **Your data is yours** — CVs are envelope-encrypted at rest; `/delete` purges everything; no telemetry
+- **Your data is yours** — CVs are envelope-encrypted at rest; `/delete` purges everything; zero telemetry by default (operators *may* enable anonymous, opt-out-able usage counting via PostHog — self-hosted builds without keys collect nothing)
 - **Cheap by design** — three-tier matching (SQL filters → embeddings → LLM review) keeps LLM spend around $2–8/month, with a hard daily budget stop
 - **Self-hostable in one command** — `docker compose up`
 
