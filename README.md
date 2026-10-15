@@ -1,3 +1,5 @@
+<p align="center"><img src="docs/images/logo.png" width="120" alt="WiseCV logo" /></p>
+
 # WiseCV
 
 **An open-source AI job-match agent you can run yourself.** WiseCV monitors public tech job boards hourly, matches new postings against each subscriber's confirmed profile, and delivers up to 3 fit-reviewed alerts a day via Telegram — each with *why it fits*, red flags, and one-tap CV tailoring (v0.2).
@@ -17,7 +19,7 @@ Message **@wisebot** on Telegram (the author's instance) — register in under 2
 Requirements: Docker, a Telegram bot token ([@BotFather](https://t.me/BotFather)), an OpenAI **or** Anthropic API key (chat + reviews run on either — `LLM_PROVIDER`; embeddings use the OpenAI-compatible provider, or [Ollama](https://ollama.com) for fully-local), a Postgres with the pgvector extension (compose provides one).
 
 ```bash
-git clone https://github.com/wisecv/wisecv && cd wisecv
+git clone https://github.com/joseph-bkey/wisecvbot && cd wisecvbot
 cp .env.example .env        # fill in TELEGRAM_BOT_TOKEN, OPENAI_API_KEY, CV_ENCRYPTION_KEY
 docker compose -f deploy/docker-compose.yml up -d --build
 ```
