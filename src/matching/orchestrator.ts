@@ -2,6 +2,7 @@ import { env } from '../config/env.js'
 import type { Notifier } from '../channels/base.js'
 import { logger } from '../log.js'
 import { embedProfile } from '../pipeline/embed.js'
+import { normalizeTitle } from '../pipeline/dedupe.js'
 import type { SubscriberLite } from '../storage/subscribers.js'
 import { jobsByIds, jobsSince, type JobLite } from '../storage/jobs.js'
 import {
@@ -118,16 +119,27 @@ async function runForSubscriber(
   }
 
   const ranked: Array<{ job: JobLite; simScore: number }> = embedding
-    ? tier2Rank(embedding, filtered, { threshold: TIER2_FLOOR, k: TIER2_TOP_K })
+    ? tier2Rank(embedding, filtered, { threshold: TIER2_FLOOR, k: TIER2_TOP_K * 4 })
     : []
 
   if (ranked.length === 0) return
 
+  // aggregators repost the same opening under slightly different locations and
+  // dedupe keys (company+title+location) — collapse to one real job per
+  // company+title so a day's top-5 isn't five variants of the same posting
+  const seenRealJobs = new Set<string>()
+  const uniqueRanked = ranked.filter(({ job }) => {
+    const key = `${job.company.toLowerCase().trim()}::${normalizeTitle(job.title).slice(0, 40)}`
+    if (seenRealJobs.has(key)) return false
+    seenRealJobs.add(key)
+    return true
+  })
+
   // fetch full rows (description) only for the tier-3 survivors
-  const fullJobs = await jobsByIds(ranked.map((r) => r.job.id))
+  const fullJobs = await jobsByIds(uniqueRanked.slice(0, TIER2_TOP_K).map((r) => r.job.id))
   const fullById = new Map(fullJobs.map((j) => [j.id, j]))
 
-  for (const cand of ranked) {
+  for (const cand of uniqueRanked.slice(0, TIER2_TOP_K)) {
     if (allowance <= 0) break
     const job = fullById.get(cand.job.id)
     if (!job) continue
@@ -140,7 +152,18 @@ async function runForSubscriber(
       continue
     }
     const effective = review ?? fallbackReview(cand.simScore, job)
-    if (!effective.match) continue
+    if (!effective.match) {
+      // rejected reviews leave a trace — otherwise tuning the reviewer is blind
+      logger.info('tier3_rejected', {
+        jobId: job.id,
+        company: job.company,
+        title: job.title.slice(0, 50),
+        fitScore: effective.fitScore,
+        why: effective.whyThisFits[0]?.slice(0, 140),
+        flag: effective.redFlags[0]?.slice(0, 140) ?? null,
+      })
+      continue
+    }
 
     const matchId = await createMatch({
       subscriberId: sub.id,
