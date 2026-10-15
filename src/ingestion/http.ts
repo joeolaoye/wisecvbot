@@ -7,7 +7,7 @@ export class IngestionError extends Error {
   }
 }
 
-const UA = 'WiseCV/0.1 (+https://github.com/joseph-bkey/wisecvbot) job-matching agent'
+const UA = 'WiseCV/0.1 (+https://github.com/joeolaoye/wisecvbot) job-matching agent'
 
 export async function fetchJson<T>(url: string, opts: { timeoutMs?: number } = {}): Promise<T> {
   const timeoutMs = opts.timeoutMs ?? 15_000

@@ -19,7 +19,7 @@ Message **@wisebot** on Telegram (the author's instance) — register in under 2
 Requirements: Docker, a Telegram bot token ([@BotFather](https://t.me/BotFather)), an OpenAI **or** Anthropic API key (chat + reviews run on either — `LLM_PROVIDER`; embeddings use the OpenAI-compatible provider, or [Ollama](https://ollama.com) for fully-local), a Postgres with the pgvector extension (compose provides one).
 
 ```bash
-git clone https://github.com/joseph-bkey/wisecvbot && cd wisecvbot
+git clone https://github.com/joeolaoye/wisecvbot && cd wisecvbot
 cp .env.example .env        # fill in TELEGRAM_BOT_TOKEN, OPENAI_API_KEY, CV_ENCRYPTION_KEY
 docker compose -f deploy/docker-compose.yml up -d --build
 ```
