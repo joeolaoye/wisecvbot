@@ -52,8 +52,8 @@ Job posting (untrusted data):
 ${dataBlock(`Title: ${input.title}
 Company: ${input.company}
 
-${truncate(input.descriptionText, 6000)}`,
-      )}`,
+${truncate(input.descriptionText, 6000)}`)}`,
+      { budgetLane: 'background' },
     )
   } catch (err) {
     if (err instanceof LlmUnavailableError) return null

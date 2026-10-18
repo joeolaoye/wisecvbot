@@ -41,8 +41,12 @@ const MIN_DELIVERABLE_FIT = 30
 
 export interface MatchRunSummary {
   subscribersConsidered: number
+  profilesMissingEmbedding: number
+  tier1Candidates: number
+  rankedCandidates: number
   alertsSent: number
   reviewsRun: number
+  reviewsRejected: number
   subscribersFailed: number
 }
 
@@ -55,8 +59,12 @@ export interface MatchRunSummary {
 export async function runDailyMatch(notifier: Notifier): Promise<MatchRunSummary> {
   const summary: MatchRunSummary = {
     subscribersConsidered: 0,
+    profilesMissingEmbedding: 0,
+    tier1Candidates: 0,
+    rankedCandidates: 0,
     alertsSent: 0,
     reviewsRun: 0,
+    reviewsRejected: 0,
     subscribersFailed: 0,
   }
 
@@ -73,7 +81,10 @@ export async function runDailyMatch(notifier: Notifier): Promise<MatchRunSummary
       await runForSubscriber(sub, profile, candidates, notifier, summary)
     } catch (err) {
       summary.subscribersFailed++
-      logger.error('match_subscriber_failed', { subscriberId: sub.id, error: String(err).slice(0, 200) })
+      logger.error('match_subscriber_failed', {
+        subscriberId: sub.id,
+        error: String(err).slice(0, 200),
+      })
     }
   }
 
@@ -119,16 +130,23 @@ async function runForSubscriber(
   const filtered = candidates.filter(
     (j) => !excludeIds.has(j.id) && !excludeKeys.has(j.dedupeKey) && tier1Filter(profile, j),
   )
+  summary.tier1Candidates += filtered.length
 
   let embedding = sub.profileEmbedding
   if (!embedding) {
     embedding = await embedProfile(profile)
     if (embedding) await setEmbedding(sub.id, embedding)
   }
+  if (!embedding) {
+    summary.profilesMissingEmbedding++
+    return
+  }
 
-  const ranked: Array<{ job: JobLite; simScore: number }> = embedding
-    ? tier2Rank(embedding, filtered, { threshold: TIER2_FLOOR, k: TIER2_TOP_K * 4 })
-    : []
+  const ranked: Array<{ job: JobLite; simScore: number }> = tier2Rank(embedding, filtered, {
+    threshold: TIER2_FLOOR,
+    k: TIER2_TOP_K * 4,
+  })
+  summary.rankedCandidates += ranked.length
 
   if (ranked.length === 0) return
 
@@ -161,6 +179,7 @@ async function runForSubscriber(
     }
     const effective = review ?? fallbackReview(cand.simScore, job)
     if (!effective.match || effective.fitScore < MIN_DELIVERABLE_FIT) {
+      summary.reviewsRejected++
       // rejected reviews leave a trace — otherwise tuning the reviewer is blind
       logger.info('tier3_rejected', {
         jobId: job.id,

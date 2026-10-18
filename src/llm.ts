@@ -21,9 +21,7 @@ import { addSpend, spendCentsToday } from './storage/ops.js'
  */
 
 export class LlmUnavailableError extends Error {
-  constructor(
-    public reason: 'not-configured' | 'budget-exhausted',
-  ) {
+  constructor(public reason: 'not-configured' | 'budget-exhausted') {
     super(reason)
   }
 }
@@ -75,18 +73,45 @@ export function embeddingsConfigured(): boolean {
 /** Every provider call carries a hard timeout — a hung provider must never hang the pipeline. */
 const LLM_TIMEOUT_MS = 60_000
 
-async function ensureBudget(configured: boolean): Promise<void> {
+export type LlmBudgetLane = 'foreground' | 'background'
+
+export interface LlmCallOptions {
+  budgetLane?: LlmBudgetLane
+}
+
+/**
+ * Foreground work (candidate profiles and matching) may use the full cap.
+ * Background job enrichment stops early, preserving capacity for alerts.
+ */
+export function budgetCeilingCents(
+  lane: LlmBudgetLane,
+  dailyBudgetCents = env.DAILY_LLM_BUDGET_CENTS,
+  matchReserveCents = env.LLM_MATCH_RESERVE_CENTS,
+): number {
+  return lane === 'background'
+    ? Math.max(0, dailyBudgetCents - matchReserveCents)
+    : dailyBudgetCents
+}
+
+async function ensureBudget(configured: boolean, lane: LlmBudgetLane): Promise<void> {
   if (!configured) throw new LlmUnavailableError('not-configured')
   const spent = await spendCentsToday()
-  if (spent >= env.DAILY_LLM_BUDGET_CENTS) {
-    logger.warn('llm_budget_exhausted', { spentCents: spent, budgetCents: env.DAILY_LLM_BUDGET_CENTS })
+  const ceiling = budgetCeilingCents(lane)
+  if (spent >= ceiling) {
+    logger.warn('llm_budget_exhausted', {
+      lane,
+      spentCents: spent,
+      budgetCents: ceiling,
+      dailyBudgetCents: env.DAILY_LLM_BUDGET_CENTS,
+      matchReserveCents: env.LLM_MATCH_RESERVE_CENTS,
+    })
     throw new LlmUnavailableError('budget-exhausted')
   }
 }
 
 /** True when today's spend has reached the cap — surfaces honest UX instead of generic failures. */
-export async function budgetExhausted(): Promise<boolean> {
-  return (await spendCentsToday()) >= env.DAILY_LLM_BUDGET_CENTS
+export async function budgetExhausted(lane: LlmBudgetLane = 'foreground'): Promise<boolean> {
+  return (await spendCentsToday()) >= budgetCeilingCents(lane)
 }
 
 function costCents(totalTokens: number): number {
@@ -94,8 +119,13 @@ function costCents(totalTokens: number): number {
   return Math.max(1, Math.ceil((totalTokens / 1000) * env.LLM_CENTS_PER_1K_TOKENS))
 }
 
-export async function generateJson<T>(schema: z.ZodType<T>, system: string, prompt: string): Promise<T> {
-  await ensureBudget(llmConfigured())
+export async function generateJson<T>(
+  schema: z.ZodType<T>,
+  system: string,
+  prompt: string,
+  options: LlmCallOptions = {},
+): Promise<T> {
+  await ensureBudget(llmConfigured(), options.budgetLane ?? 'foreground')
   const result = await generateObject({
     model: chatModel(),
     schema,
@@ -108,9 +138,12 @@ export async function generateJson<T>(schema: z.ZodType<T>, system: string, prom
   return result.object
 }
 
-export async function embedTexts(values: string[]): Promise<number[][]> {
+export async function embedTexts(
+  values: string[],
+  options: LlmCallOptions = {},
+): Promise<number[][]> {
   if (values.length === 0) return []
-  await ensureBudget(embeddingsConfigured())
+  await ensureBudget(embeddingsConfigured(), options.budgetLane ?? 'foreground')
   const result = await embedMany({
     model: embeddingModel(),
     values,
@@ -120,8 +153,8 @@ export async function embedTexts(values: string[]): Promise<number[][]> {
   return result.embeddings
 }
 
-export async function embedText(value: string): Promise<number[]> {
-  const [vector] = await embedTexts([value])
+export async function embedText(value: string, options: LlmCallOptions = {}): Promise<number[]> {
+  const [vector] = await embedTexts([value], options)
   if (!vector) throw new Error('embedding provider returned no vector')
   return vector
 }

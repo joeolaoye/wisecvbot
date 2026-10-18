@@ -27,7 +27,7 @@ export function profileEmbeddingText(profile: Profile): string {
 
 export async function embedJob(job: EmbeddableJob): Promise<number[] | null> {
   try {
-    return await embedText(jobEmbeddingText(job))
+    return await embedText(jobEmbeddingText(job), { budgetLane: 'background' })
   } catch (err) {
     if (err instanceof LlmUnavailableError) return null
     throw err

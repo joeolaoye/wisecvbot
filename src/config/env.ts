@@ -37,6 +37,8 @@ const envSchema = z.object({
   CHAT_MODEL: z.string().optional(),
   EMBEDDING_MODEL: z.string().default('text-embedding-3-small'),
   DAILY_LLM_BUDGET_CENTS: z.coerce.number().int().min(0).default(500),
+  /** Budget held back from background enrichment so matching can always run. */
+  LLM_MATCH_RESERVE_CENTS: z.coerce.number().int().min(0).default(10),
   /** Cost estimate for budget accounting (default over-estimates, which is the safe side). */
   LLM_CENTS_PER_1K_TOKENS: z.coerce.number().positive().default(1),
   /** Embedding/classification backlog drain per ingest run — raise to catch up faster (watch the budget). */
@@ -72,18 +74,24 @@ function parseEnv(): z.infer<typeof envSchema> {
   const parsed = envSchema.safeParse(process.env)
   if (!parsed.success) {
     const issues = parsed.error.issues.map((i) => `  ${i.path.join('.')}: ${i.message}`).join('\n')
-    throw new Error(`Invalid environment configuration:\n${issues}\nCopy .env.example to .env and fill it in.`)
+    throw new Error(
+      `Invalid environment configuration:\n${issues}\nCopy .env.example to .env and fill it in.`,
+    )
   }
   const env = parsed.data
   // webhook mode is a public endpoint — refuse to run it unauthenticated
   // (grammY accepts ALL requests when the secret token is undefined)
   if (env.APP_URL && !env.TELEGRAM_WEBHOOK_SECRET) {
-    throw new Error('TELEGRAM_WEBHOOK_SECRET is required when APP_URL is set (webhook mode). Generate: openssl rand -hex 32')
+    throw new Error(
+      'TELEGRAM_WEBHOOK_SECRET is required when APP_URL is set (webhook mode). Generate: openssl rand -hex 32',
+    )
   }
   // key material must actually decode to 32 bytes, not just be long
   const key = Buffer.from(env.CV_ENCRYPTION_KEY, 'base64')
   if (key.length !== 32) {
-    throw new Error('CV_ENCRYPTION_KEY must be 32 bytes base64 — generate with: openssl rand -base64 32')
+    throw new Error(
+      'CV_ENCRYPTION_KEY must be 32 bytes base64 — generate with: openssl rand -base64 32',
+    )
   }
   return env
 }

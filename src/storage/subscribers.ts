@@ -35,7 +35,10 @@ export async function getByChannelUser(
   return row ?? null
 }
 
-export async function createIfAbsent(channel: string, channelUserId: string): Promise<SubscriberLite> {
+export async function createIfAbsent(
+  channel: string,
+  channelUserId: string,
+): Promise<SubscriberLite> {
   const [row] = await db
     .insert(subscribers)
     .values({ channel, channelUserId })
@@ -81,7 +84,11 @@ export async function setProfileDraft(id: number, profile: Profile): Promise<voi
     .where(eq(subscribers.id, id))
 }
 
-export async function activate(id: number, profile: Profile, embedding: number[] | null): Promise<void> {
+export async function activate(
+  id: number,
+  profile: Profile,
+  embedding: number[] | null,
+): Promise<void> {
   await db
     .update(subscribers)
     .set({ profile, profileEmbedding: embedding, status: 'active', updatedAt: new Date() })
@@ -89,7 +96,10 @@ export async function activate(id: number, profile: Profile, embedding: number[]
 }
 
 export async function updateProfile(id: number, profile: Profile): Promise<void> {
-  await db.update(subscribers).set({ profile, updatedAt: new Date() }).where(eq(subscribers.id, id))
+  await db
+    .update(subscribers)
+    .set({ profile, profileEmbedding: null, updatedAt: new Date() })
+    .where(eq(subscribers.id, id))
 }
 
 export async function setEmbedding(id: number, embedding: number[]): Promise<void> {
