@@ -4,6 +4,7 @@ import { env } from './config/env.js'
 import { logger } from './log.js'
 import { countCompanies, countJobs } from './storage/jobs.js'
 import { deadLetterCount } from './storage/ops.js'
+import { handleWebRequest, logWebError } from './web/http.js'
 
 /** Origins allowed to read /healthz cross-origin (the landing page's live counter). */
 const ALLOWED_ORIGINS = [
@@ -61,10 +62,15 @@ export function startServer(bot?: Bot): void {
         await handleWebhook(req, res)
         return
       }
+      const url = new URL(req.url ?? '/', 'http://localhost')
+      if (await handleWebRequest(req, res, pathname, url)) return
       res.writeHead(404).end()
     } catch (err) {
       logger.error('server_error', { error: String(err).slice(0, 200) })
-      res.writeHead(500).end()
+      logWebError(err)
+      if (!res.headersSent) {
+        res.writeHead(500, { 'content-type': 'application/json' }).end(JSON.stringify({ error: 'Something went wrong.' }))
+      } else res.end()
     }
   })
 

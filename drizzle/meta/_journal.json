@@ -15,6 +15,13 @@
       "when": 1792080642974,
       "tag": "0001_fair_tombstone",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1792314944412,
+      "tag": "0002_crazy_groot",
+      "breakpoints": true
     }
   ]
 }

@@ -1,4 +1,4 @@
-import { Bot, InlineKeyboard, type Context } from 'grammy'
+import { Bot, InlineKeyboard, Keyboard, type Context } from 'grammy'
 import { env, requireBotEnv } from '../config/env.js'
 import {
   ROLE_FAMILIES,
@@ -34,6 +34,7 @@ import { activate } from '../storage/subscribers.js'
 import { formatMatchMessage, formatProfileCard } from './base.js'
 import type { Notifier } from './base.js'
 import { logger } from '../log.js'
+import { beginTelegramChallenge, completeTelegramChallenge } from '../web/auth.js'
 
 const CHANNEL = 'telegram'
 const MAX_CV_BYTES = 20 * 1024 * 1024 // Telegram bot file-download limit
@@ -197,7 +198,9 @@ const salaryKeyboard = (prefix: string) => {
 }
 
 const remoteKeyboard = (prefix: string) =>
-  new InlineKeyboard().text('Remote only', `${prefix}:remote`).text('Open to on-site', `${prefix}:open`)
+  new InlineKeyboard()
+    .text('Remote only', `${prefix}:remote`)
+    .text('Open to on-site', `${prefix}:open`)
 
 const roleKeyboard = () => {
   const kb = new InlineKeyboard()
@@ -291,7 +294,7 @@ async function handleCvUpload(
     doc.mime_type === 'application/pdf' ||
     doc.mime_type.includes('wordprocessingml')
   if (!okMime || !/\.(pdf|docx?)$/i.test(filename)) {
-    await ctx.reply("Hmm, I can only read PDF or Word files. Try sending it again?")
+    await ctx.reply('Hmm, I can only read PDF or Word files. Try sending it again?')
     return
   }
   if ((doc?.file_size ?? 0) > MAX_CV_BYTES) {
@@ -330,7 +333,7 @@ async function handleCvUpload(
       // honest reason — a spent budget reads as "broken" if we say nothing
       const why = (await budgetExhausted())
         ? "My AI budget for today is used up \u{1F634} I've saved your CV — answer 5 quick questions instead, or try again tomorrow"
-        : "Something went wrong reading your CV \u{2014} mind trying again, or answering a few questions instead?"
+        : 'Something went wrong reading your CV \u{2014} mind trying again, or answering a few questions instead?'
       await ctx.reply(why, { reply_markup: cvKeyboard() })
       return
     }
@@ -349,6 +352,18 @@ function registerHandlers(bot: Bot) {
   bot.catch((err) => logger.error('bot_error', { error: String(err.error).slice(0, 300) }))
 
   bot.command('start', async (ctx) => {
+    const startPayload = typeof ctx.match === 'string' ? ctx.match.trim() : ''
+    if (startPayload.startsWith('web_')) {
+      const accepted = await beginTelegramChallenge(startPayload.slice(4), userId(ctx))
+      if (!accepted) {
+        await ctx.reply('That web sign-in link expired. Return to WiseCV and request a new one.')
+        return
+      }
+      await ctx.reply('To verify your WiseCV web sign-in, share your own phone number.', {
+        reply_markup: new Keyboard().requestContact('Share my phone number').resized().oneTime(),
+      })
+      return
+    }
     const sub = await fetchSub(ctx)
     clearManualState(sub)
     if (!sub || sub.status === 'new') {
@@ -365,7 +380,9 @@ function registerHandlers(bot: Bot) {
     if (sub.status === 'active') {
       await ctx.reply("You're all set — matches are flowing. /profile · /pause · /delete")
     } else {
-      await ctx.reply(`Let's pick up where we left off. ${CV_PROMPT}`, { reply_markup: cvKeyboard() })
+      await ctx.reply(`Let's pick up where we left off. ${CV_PROMPT}`, {
+        reply_markup: cvKeyboard(),
+      })
     }
   })
 
@@ -388,7 +405,10 @@ function registerHandlers(bot: Bot) {
       `Anonymous usage counting is ${sub.analyticsOptOut ? 'OFF' : 'ON'} for you.\nWhat gets counted: feature usage and button taps, tied to an anonymous id — never message text, CV content, or your Telegram identity.`,
       {
         reply_markup: new InlineKeyboard()
-          .text(sub.analyticsOptOut ? 'Turn ON' : 'Turn OFF', sub.analyticsOptOut ? 'ana:on' : 'ana:off')
+          .text(
+            sub.analyticsOptOut ? 'Turn ON' : 'Turn OFF',
+            sub.analyticsOptOut ? 'ana:on' : 'ana:off',
+          )
           .text('Keep as is', 'ana:noop'),
       },
     )
@@ -448,11 +468,14 @@ function registerHandlers(bot: Bot) {
 
   bot.command('delete', async (ctx) => {
     await fetchSub(ctx) // gate: no account → still show the flow for consistency
-    await ctx.reply('Delete your account and ALL data (CV, profile, history)? This cannot be undone.', {
-      reply_markup: new InlineKeyboard()
-        .text('Yes, delete everything', 'del:yes')
-        .text('Keep my account', 'del:no'),
-    })
+    await ctx.reply(
+      'Delete your account and ALL data (CV, profile, history)? This cannot be undone.',
+      {
+        reply_markup: new InlineKeyboard()
+          .text('Yes, delete everything', 'del:yes')
+          .text('Keep my account', 'del:no'),
+      },
+    )
   })
 
   // ── consent (Stage 1) — the row is born here, not at /start ──
@@ -495,7 +518,9 @@ function registerHandlers(bot: Bot) {
     const sub = await ensureSub(ctx)
     await setStatus(sub.id, 'awaiting_cv')
     await ctx.answerCallbackQuery()
-    await ctx.reply('No problem. What kind of role are you after?', { reply_markup: roleKeyboard() })
+    await ctx.reply('No problem. What kind of role are you after?', {
+      reply_markup: roleKeyboard(),
+    })
   })
 
   bot.callbackQuery(/^mrole:(.+)$/, async (ctx) => {
@@ -532,7 +557,9 @@ function registerHandlers(bot: Bot) {
     }
     await updateProfile(sub.id, merged)
     await ctx.answerCallbackQuery()
-    await ctx.reply('Last one — remote only, or open to on-site?', { reply_markup: remoteKeyboard('mloc2') })
+    await ctx.reply('Last one — remote only, or open to on-site?', {
+      reply_markup: remoteKeyboard('mloc2'),
+    })
   })
 
   // ── confirmation (Stage 4 — the ratification gate) ──
@@ -619,7 +646,26 @@ function registerHandlers(bot: Bot) {
     const sub = await fetchSub(ctx)
     track(sub, 'tailor_tapped') // the pricing-demand signal — placeholder or not
     await ctx.answerCallbackQuery()
-    await ctx.reply('CV tailoring ships in v0.2 — your confirmed profile is saved and ready for it. 🚧')
+    await ctx.reply(
+      'CV tailoring ships in v0.2 — your confirmed profile is saved and ready for it. 🚧',
+    )
+  })
+
+  // Telegram passwordless web sign-in. Only accept a contact owned by the
+  // sender; forwarded contacts must never authenticate another person.
+  bot.on(':contact', async (ctx) => {
+    const contact = ctx.message?.contact
+    if (!contact || contact.user_id !== ctx.from?.id) {
+      await ctx.reply('Please use “Share my phone number” so Telegram verifies it belongs to you.')
+      return
+    }
+    const completed = await completeTelegramChallenge(userId(ctx), contact.phone_number)
+    await ctx.reply(
+      completed
+        ? 'Verified ✅ Return to the WiseCV tab — it will sign you in automatically.'
+        : 'That sign-in request expired or the phone number did not match. Request a new link on WiseCV.',
+      { reply_markup: { remove_keyboard: true } },
+    )
   })
 
   // ── documents (CV upload / re-upload) ──
@@ -715,7 +761,10 @@ export function createBot(): Bot {
       () => next() as Promise<unknown>,
       () => next() as Promise<unknown>,
     )
-    chains.set(key, run.catch(() => undefined))
+    chains.set(
+      key,
+      run.catch(() => undefined),
+    )
     return run
   })
   registerHandlers(bot)
