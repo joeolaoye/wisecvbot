@@ -35,6 +35,15 @@ export async function getByChannelUser(
   return row ?? null
 }
 
+export async function getById(id: number): Promise<SubscriberLite | null> {
+  const [row] = await db
+    .select(liteColumns)
+    .from(subscribers)
+    .where(eq(subscribers.id, id))
+    .limit(1)
+  return row ?? null
+}
+
 export async function createIfAbsent(
   channel: string,
   channelUserId: string,

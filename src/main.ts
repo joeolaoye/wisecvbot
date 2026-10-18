@@ -1,12 +1,13 @@
 import { migrate } from 'drizzle-orm/node-postgres/migrator'
 import { checkConnection, closeDb, db, pool } from './storage/db.js'
-import { createBot, telegramNotifier } from './channels/telegram.js'
+import { createBot } from './channels/telegram.js'
 import { env } from './config/env.js'
 import type { Notifier } from './channels/base.js'
 import { closeAnalytics } from './analytics.js'
 import { logger } from './log.js'
 import { schedulerIdle, startScheduler } from './scheduler.js'
 import { startServer } from './server.js'
+import { webAwareNotifier } from './web/notifier.js'
 
 async function main(): Promise<void> {
   await checkConnection()
@@ -20,7 +21,7 @@ async function main(): Promise<void> {
 
   if (env.TELEGRAM_BOT_TOKEN) {
     const bot = createBot()
-    const notifier = telegramNotifier(bot)
+    const notifier = webAwareNotifier(bot)
     startServer(bot)
     startScheduler(notifier)
 

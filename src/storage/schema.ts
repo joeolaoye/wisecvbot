@@ -41,7 +41,8 @@ export const jobs = pgTable(
     skills: jsonb('skills').$type<string[]>().notNull().default([]),
     dedupeKey: text('dedupe_key').notNull(),
     contentHash: text('content_hash').notNull(),
-    embedding: vector('embedding', { dimensions: 1536 }),    firstSeen: timestamp('first_seen', { withTimezone: true }).notNull().defaultNow(),
+    embedding: vector('embedding', { dimensions: 1536 }),
+    firstSeen: timestamp('first_seen', { withTimezone: true }).notNull().defaultNow(),
     lastSeen: timestamp('last_seen', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [
@@ -142,6 +143,74 @@ export const deadLetters = pgTable('dead_letters', {
   error: text('error').notNull(),
   payloadSample: text('payload_sample'),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+})
+
+/** Passwordless web identities. Phone numbers are normalized E.164 values. */
+export const webAuthIdentities = pgTable('web_auth_identities', {
+  phone: text('phone').primaryKey(),
+  subscriberId: integer('subscriber_id')
+    .notNull()
+    .unique()
+    .references(() => subscribers.id, { onDelete: 'cascade' }),
+  verifiedVia: text('verified_via').notNull(),
+  verifiedAt: timestamp('verified_at', { withTimezone: true }).notNull().defaultNow(),
+})
+
+export const webAuthChallenges = pgTable(
+  'web_auth_challenges',
+  {
+    tokenHash: text('token_hash').primaryKey(),
+    phone: text('phone').notNull(),
+    method: text('method').notNull(),
+    codeHash: text('code_hash'),
+    telegramUserId: text('telegram_user_id'),
+    subscriberId: integer('subscriber_id').references(() => subscribers.id, {
+      onDelete: 'cascade',
+    }),
+    attempts: integer('attempts').notNull().default(0),
+    expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+    completedAt: timestamp('completed_at', { withTimezone: true }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index('web_auth_challenges_expires_idx').on(t.expiresAt)],
+)
+
+export const webSessions = pgTable(
+  'web_sessions',
+  {
+    tokenHash: text('token_hash').primaryKey(),
+    subscriberId: integer('subscriber_id')
+      .notNull()
+      .references(() => subscribers.id, { onDelete: 'cascade' }),
+    csrfToken: text('csrf_token').notNull(),
+    expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index('web_sessions_subscriber_idx').on(t.subscriberId)],
+)
+
+export const webMessages = pgTable(
+  'web_messages',
+  {
+    id: serial('id').primaryKey(),
+    subscriberId: integer('subscriber_id')
+      .notNull()
+      .references(() => subscribers.id, { onDelete: 'cascade' }),
+    role: text('role').notNull(),
+    body: text('body').notNull(),
+    actions: jsonb('actions').$type<Array<{ label: string; value: string }>>(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index('web_messages_subscriber_idx').on(t.subscriberId, t.createdAt)],
+)
+
+export const webConversations = pgTable('web_conversations', {
+  subscriberId: integer('subscriber_id')
+    .primaryKey()
+    .references(() => subscribers.id, { onDelete: 'cascade' }),
+  state: text('state').notNull().default('idle'),
+  draft: jsonb('draft').$type<Record<string, unknown>>().notNull().default({}),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 })
 
 export type Job = typeof jobs.$inferSelect

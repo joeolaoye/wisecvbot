@@ -22,7 +22,20 @@ const envSchema = z.object({
 
   /** Required for bot / match-delivery mode only. */
   TELEGRAM_BOT_TOKEN: z.string().optional(),
+  /** Bot username without @, used to build passwordless web-login deep links. */
+  TELEGRAM_BOT_USERNAME: z
+    .string()
+    .regex(/^[A-Za-z0-9_]{5,32}$/)
+    .optional(),
   TELEGRAM_WEBHOOK_SECRET: z.string().optional(),
+
+  /** At least 32 characters; signs web sessions and one-time verification codes. */
+  WEB_AUTH_SECRET: z.string().min(32).optional(),
+  WEB_SESSION_DAYS: z.coerce.number().int().min(1).max(90).default(30),
+  WHATSAPP_ACCESS_TOKEN: z.string().optional(),
+  WHATSAPP_PHONE_NUMBER_ID: z.string().optional(),
+  WHATSAPP_AUTH_TEMPLATE_NAME: z.string().default('wisecv_login'),
+  WHATSAPP_AUTH_TEMPLATE_LANGUAGE: z.string().default('en_US'),
 
   /** 32 bytes base64 — generate with: openssl rand -base64 32 */
   CV_ENCRYPTION_KEY: z.string().min(40),

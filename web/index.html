@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="description" content="WiseCV — a quiet agent for jobs that fit." />
+    <title>WiseCV</title>
+    <link rel="stylesheet" href="/styles.css" />
+    <script src="/app.js" defer></script>
+  </head>
+  <body>
+    <main class="shell">
+      <header>
+        <a class="brand" href="/" aria-label="WiseCV home"><span>Wise</span>CV</a>
+        <button id="logout" class="quiet hidden" type="button">Sign out</button>
+      </header>
+
+      <section id="auth" class="auth-card" aria-labelledby="auth-title">
+        <p class="eyebrow">Your job agent</p>
+        <h1 id="auth-title">Let’s find work worth your time.</h1>
+        <p class="intro">Enter your phone number. No password—verify with Telegram or WhatsApp.</p>
+        <label for="phone">Phone number</label>
+        <input
+          id="phone"
+          type="tel"
+          autocomplete="tel"
+          inputmode="tel"
+          placeholder="+234 801 234 5678"
+        />
+        <div class="auth-actions">
+          <button data-method="telegram" type="button">Continue with Telegram</button>
+          <button data-method="whatsapp" class="secondary" type="button">
+            Continue with WhatsApp
+          </button>
+        </div>
+        <div id="verify" class="verify hidden">
+          <p id="verify-copy"></p>
+          <a id="telegram-link" class="button hidden" target="_blank" rel="noreferrer"
+            >Open Telegram</a
+          >
+          <form id="code-form" class="hidden">
+            <label for="code">6-digit code</label>
+            <div class="code-row">
+              <input id="code" inputmode="numeric" autocomplete="one-time-code" maxlength="6" />
+              <button type="submit">Verify</button>
+            </div>
+          </form>
+        </div>
+        <p id="auth-error" class="error" role="alert"></p>
+      </section>
+
+      <section id="chat" class="chat hidden" aria-label="WiseBot chat">
+        <div id="messages" class="messages" aria-live="polite"></div>
+        <form id="composer" class="composer">
+          <label class="upload" title="Upload CV">
+            <span aria-hidden="true">＋</span><span class="sr-only">Upload CV</span>
+            <input id="cv" type="file" accept=".pdf,.doc,.docx" />
+          </label>
+          <textarea
+            id="message"
+            rows="1"
+            placeholder="Message WiseBot"
+            aria-label="Message WiseBot"
+          ></textarea>
+          <button type="submit" aria-label="Send">Send</button>
+        </form>
+        <p id="chat-error" class="error" role="alert"></p>
+      </section>
+    </main>
+  </body>
+</html>
