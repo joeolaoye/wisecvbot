@@ -1,4 +1,4 @@
-/* global Blob, URLSearchParams, clearInterval, document, fetch, history, location, setInterval */
+/* global Blob, URLSearchParams, document, fetch, history, location */
 
 const $ = (selector) => document.querySelector(selector)
 const auth = $('#auth')
@@ -8,8 +8,6 @@ const messages = $('#messages')
 const authError = $('#auth-error')
 const chatError = $('#chat-error')
 let csrfToken = ''
-let challengeToken = ''
-let pollTimer = null
 
 const query = new URLSearchParams(location.search)
 if (query.get('email') === 'invalid') {
@@ -43,15 +41,14 @@ async function loadAuthCapabilities() {
     const capabilities = await api('/api/auth/capabilities')
     if (capabilities.email) {
       $('#email-form').classList.remove('hidden')
-      $('#email-divider').classList.remove('hidden')
-      $('#auth-intro').textContent = 'No password. Sign in by email, Telegram, or WhatsApp.'
     }
-    document.querySelector('[data-method="telegram"]').disabled = !capabilities.telegram
-    document.querySelector('[data-method="whatsapp"]').disabled = !capabilities.whatsapp
+    if (capabilities.telegramUrl) {
+      const telegramChip = $('#telegram-chip')
+      telegramChip.href = capabilities.telegramUrl
+      telegramChip.classList.remove('hidden')
+    }
   } catch {
-    document.querySelectorAll('[data-method]').forEach((button) => {
-      button.disabled = true
-    })
+    // Keep unavailable sign-in methods hidden when capabilities cannot be loaded.
   }
 }
 
@@ -107,51 +104,6 @@ async function sendAction(action) {
   }
 }
 
-async function finishAuthentication(data) {
-  csrfToken = data.csrfToken
-  clearInterval(pollTimer)
-  await loadChat()
-}
-
-async function pollChallenge() {
-  try {
-    const data = await api(`/api/auth/status?token=${encodeURIComponent(challengeToken)}`)
-    if (data.authenticated) await finishAuthentication(data)
-  } catch (error) {
-    authError.textContent = error.message
-  }
-}
-
-document.querySelectorAll('[data-method]').forEach((button) => {
-  button.addEventListener('click', async () => {
-    authError.textContent = ''
-    const phone = $('#phone').value
-    const method = button.dataset.method
-    try {
-      const data = await api('/api/auth/start', {
-        method: 'POST',
-        body: JSON.stringify({ phone, method }),
-      })
-      challengeToken = data.token
-      $('#verify').classList.remove('hidden')
-      if (method === 'telegram') {
-        $('#verify-copy').textContent =
-          'Open Telegram and share your phone number with WiseBot. This tab will sign in automatically.'
-        $('#telegram-link').href = data.telegramUrl
-        $('#telegram-link').classList.remove('hidden')
-        $('#code-form').classList.add('hidden')
-        pollTimer = setInterval(pollChallenge, 1800)
-      } else {
-        $('#verify-copy').textContent = 'We sent a 6-digit verification code through WhatsApp.'
-        $('#telegram-link').classList.add('hidden')
-        $('#code-form').classList.remove('hidden')
-      }
-    } catch (error) {
-      authError.textContent = error.message
-    }
-  })
-})
-
 $('#email-form').addEventListener('submit', async (event) => {
   event.preventDefault()
   authError.textContent = ''
@@ -162,22 +114,6 @@ $('#email-form').addEventListener('submit', async (event) => {
     })
     $('#verify').classList.remove('hidden')
     $('#verify-copy').textContent = data.message
-    $('#telegram-link').classList.add('hidden')
-    $('#code-form').classList.add('hidden')
-  } catch (error) {
-    authError.textContent = error.message
-  }
-})
-
-$('#code-form').addEventListener('submit', async (event) => {
-  event.preventDefault()
-  authError.textContent = ''
-  try {
-    const data = await api('/api/auth/verify', {
-      method: 'POST',
-      body: JSON.stringify({ token: challengeToken, code: $('#code').value }),
-    })
-    await finishAuthentication(data)
   } catch (error) {
     authError.textContent = error.message
   }

@@ -178,6 +178,7 @@ export async function handleWebRequest(
     json(res, 200, {
       email: Boolean(env.APP_URL && env.RESEND_API_KEY && env.EMAIL_FROM),
       telegram: Boolean(env.TELEGRAM_BOT_USERNAME),
+      telegramUrl: env.TELEGRAM_BOT_USERNAME ? `https://t.me/${env.TELEGRAM_BOT_USERNAME}` : null,
       whatsapp: Boolean(
         env.WEB_AUTH_SECRET && env.WHATSAPP_ACCESS_TOKEN && env.WHATSAPP_PHONE_NUMBER_ID,
       ),
