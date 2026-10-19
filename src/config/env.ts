@@ -37,6 +37,10 @@ const envSchema = z.object({
   WHATSAPP_AUTH_TEMPLATE_NAME: z.string().default('wisecv_login'),
   WHATSAPP_AUTH_TEMPLATE_LANGUAGE: z.string().default('en_US'),
 
+  /** Amazon SES magic-link delivery. EMAIL_FROM enables email sign-in. */
+  EMAIL_FROM: z.string().email().optional(),
+  EMAIL_AWS_REGION: z.string().default('eu-west-1'),
+
   /** 32 bytes base64 — generate with: openssl rand -base64 32 */
   CV_ENCRYPTION_KEY: z.string().min(40),
 

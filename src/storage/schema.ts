@@ -175,6 +175,31 @@ export const webAuthChallenges = pgTable(
   (t) => [index('web_auth_challenges_expires_idx').on(t.expiresAt)],
 )
 
+/** Verified email identities are separate from phone identities so either can sign in alone. */
+export const webEmailIdentities = pgTable('web_email_identities', {
+  email: text('email').primaryKey(),
+  subscriberId: integer('subscriber_id')
+    .notNull()
+    .unique()
+    .references(() => subscribers.id, { onDelete: 'cascade' }),
+  verifiedAt: timestamp('verified_at', { withTimezone: true }).notNull().defaultNow(),
+})
+
+/** Single-use, hashed magic-link tokens. Raw tokens exist only in the email being sent. */
+export const webEmailChallenges = pgTable(
+  'web_email_challenges',
+  {
+    tokenHash: text('token_hash').primaryKey(),
+    email: text('email').notNull(),
+    expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    index('web_email_challenges_email_idx').on(t.email),
+    index('web_email_challenges_expires_idx').on(t.expiresAt),
+  ],
+)
+
 export const webSessions = pgTable(
   'web_sessions',
   {

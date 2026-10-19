@@ -1,4 +1,4 @@
-import { normalizePhone, safeEqual } from '../../src/web/auth.js'
+import { normalizeEmail, normalizePhone, safeEqual } from '../../src/web/auth.js'
 
 describe('passwordless web authentication helpers', () => {
   test('normalizes an international phone number to E.164', () => {
@@ -15,5 +15,11 @@ describe('passwordless web authentication helpers', () => {
     expect(safeEqual('same', 'same')).toBe(true)
     expect(safeEqual('same', 'different')).toBe(false)
     expect(safeEqual('same', 'sam')).toBe(false)
+  })
+
+  test('normalizes and validates email addresses', () => {
+    expect(normalizeEmail('  Person@Example.COM ')).toBe('person@example.com')
+    expect(normalizeEmail('not-an-email')).toBeNull()
+    expect(normalizeEmail('person..name@example.com')).toBeNull()
   })
 })
