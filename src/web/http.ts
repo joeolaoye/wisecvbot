@@ -152,7 +152,7 @@ async function serveAsset(pathname: string, res: ServerResponse): Promise<boolea
           : 'text/html'
     res.writeHead(200, {
       'content-type': `${contentType}; charset=utf-8`,
-      'cache-control': allowed === 'index.html' ? 'no-store' : 'public, max-age=3600',
+      'cache-control': 'no-store',
       'content-security-policy':
         "default-src 'self'; connect-src 'self'; img-src 'self' data:; style-src 'self'; script-src 'self'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'",
       'x-content-type-options': 'nosniff',

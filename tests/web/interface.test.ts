@@ -10,6 +10,7 @@ describe('web sign-in interface', () => {
     expect(html).not.toContain('Continue with WhatsApp')
     expect(html).toContain('id="telegram-chip"')
     expect(html).toContain('You can also use WiseCV on Telegram — message the bot')
+    expect(html).toContain('/app.js?v=email-only')
     expect(script).not.toContain("api('/api/auth/start'")
     expect(script).toContain('telegramChip.href = capabilities.telegramUrl')
   })
