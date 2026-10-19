@@ -18,7 +18,7 @@
       <section id="auth" class="auth-card" aria-labelledby="auth-title">
         <p class="eyebrow">Your job agent</p>
         <h1 id="auth-title">Let’s find work worth your time.</h1>
-        <p id="auth-intro" class="intro">No password. Verify with Telegram or WhatsApp.</p>
+        <p id="auth-intro" class="intro">No password. We’ll email you a secure sign-in link.</p>
         <form id="email-form" class="auth-option hidden">
           <label for="email">Email address</label>
           <input
@@ -31,35 +31,19 @@
           />
           <button type="submit">Continue with email</button>
         </form>
-        <p id="email-divider" class="divider hidden"><span>or use your phone</span></p>
-        <div class="auth-option">
-          <label for="phone">Phone number</label>
-          <input
-            id="phone"
-            type="tel"
-            autocomplete="tel"
-            inputmode="tel"
-            placeholder="+234 801 234 5678"
-          />
-        </div>
-        <div class="auth-actions phone-actions">
-          <button data-method="telegram" type="button">Continue with Telegram</button>
-          <button data-method="whatsapp" class="secondary" type="button">
-            Continue with WhatsApp
-          </button>
-        </div>
+        <a
+          id="telegram-chip"
+          class="telegram-chip hidden"
+          target="_blank"
+          rel="noreferrer"
+          aria-label="Use WiseCV on Telegram"
+        >
+          <span class="telegram-dot" aria-hidden="true"></span>
+          You can also use WiseCV on Telegram — message the bot
+          <span aria-hidden="true">↗</span>
+        </a>
         <div id="verify" class="verify hidden">
           <p id="verify-copy"></p>
-          <a id="telegram-link" class="button hidden" target="_blank" rel="noreferrer"
-            >Open Telegram</a
-          >
-          <form id="code-form" class="hidden">
-            <label for="code">6-digit code</label>
-            <div class="code-row">
-              <input id="code" inputmode="numeric" autocomplete="one-time-code" maxlength="6" />
-              <button type="submit">Verify</button>
-            </div>
-          </form>
         </div>
         <p id="auth-error" class="error" role="alert"></p>
       </section>
