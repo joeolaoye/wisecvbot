@@ -18,16 +18,31 @@
       <section id="auth" class="auth-card" aria-labelledby="auth-title">
         <p class="eyebrow">Your job agent</p>
         <h1 id="auth-title">Let’s find work worth your time.</h1>
-        <p class="intro">Enter your phone number. No password—verify with Telegram or WhatsApp.</p>
-        <label for="phone">Phone number</label>
-        <input
-          id="phone"
-          type="tel"
-          autocomplete="tel"
-          inputmode="tel"
-          placeholder="+234 801 234 5678"
-        />
-        <div class="auth-actions">
+        <p id="auth-intro" class="intro">No password. Verify with Telegram or WhatsApp.</p>
+        <form id="email-form" class="auth-option hidden">
+          <label for="email">Email address</label>
+          <input
+            id="email"
+            type="email"
+            autocomplete="email"
+            inputmode="email"
+            placeholder="you@example.com"
+            required
+          />
+          <button type="submit">Continue with email</button>
+        </form>
+        <p id="email-divider" class="divider hidden"><span>or use your phone</span></p>
+        <div class="auth-option">
+          <label for="phone">Phone number</label>
+          <input
+            id="phone"
+            type="tel"
+            autocomplete="tel"
+            inputmode="tel"
+            placeholder="+234 801 234 5678"
+          />
+        </div>
+        <div class="auth-actions phone-actions">
           <button data-method="telegram" type="button">Continue with Telegram</button>
           <button data-method="whatsapp" class="secondary" type="button">
             Continue with WhatsApp

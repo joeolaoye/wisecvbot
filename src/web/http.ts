@@ -5,16 +5,21 @@ import { env } from '../config/env.js'
 import { logger } from '../log.js'
 import { getById } from '../storage/subscribers.js'
 import {
+  cancelEmailChallenge,
   consumeCompletedChallenge,
+  consumeEmailChallenge,
   createChallenge,
+  createEmailChallenge,
   createSession,
   deleteSession,
   normalizePhone,
+  normalizeEmail,
   readSession,
   sendWhatsappCode,
   verifyWhatsappCode,
   type VerificationMethod,
 } from './auth.js'
+import { sendEmailMagicLink } from './email.js'
 import {
   bootstrapChat,
   handleWebAction,
@@ -114,6 +119,19 @@ async function establishSession(subscriberId: number, res: ServerResponse): Prom
   )
 }
 
+async function establishSessionAndRedirect(
+  subscriberId: number,
+  res: ServerResponse,
+): Promise<void> {
+  const session = await createSession(subscriberId)
+  res.writeHead(303, {
+    location: '/',
+    'cache-control': 'no-store',
+    'set-cookie': sessionCookie(session.token, session.expiresAt),
+  })
+  res.end()
+}
+
 async function serveAsset(pathname: string, res: ServerResponse): Promise<boolean> {
   const allowed =
     pathname === '/'
@@ -155,6 +173,17 @@ export async function handleWebRequest(
 ): Promise<boolean> {
   if (req.method === 'GET' && (await serveAsset(pathname, res))) return true
   if (!pathname.startsWith('/api/')) return false
+
+  if (req.method === 'GET' && pathname === '/api/auth/capabilities') {
+    json(res, 200, {
+      email: Boolean(env.WEB_AUTH_SECRET && env.APP_URL && env.EMAIL_FROM),
+      telegram: Boolean(env.WEB_AUTH_SECRET && env.TELEGRAM_BOT_USERNAME),
+      whatsapp: Boolean(
+        env.WEB_AUTH_SECRET && env.WHATSAPP_ACCESS_TOKEN && env.WHATSAPP_PHONE_NUMBER_ID,
+      ),
+    })
+    return true
+  }
 
   if (req.method === 'POST' && !originAllowed(req)) {
     json(res, 403, { error: 'origin rejected' })
@@ -200,6 +229,52 @@ export async function handleWebRequest(
           : null,
       expiresAt: challenge.expiresAt,
     })
+    return true
+  }
+
+  if (req.method === 'POST' && pathname === '/api/auth/email/start') {
+    if (rateLimited(req)) return void json(res, 429, { error: 'Try again in 15 minutes.' }) as never
+    const input = await jsonBody(req)
+    const email = normalizeEmail(String(input.email ?? ''))
+    if (!email) {
+      json(res, 400, { error: 'Enter a valid email address.' })
+      return true
+    }
+    if (rateLimitedKey(`email:${email}`)) {
+      json(res, 429, { error: 'Try again in 15 minutes.' })
+      return true
+    }
+    if (!env.WEB_AUTH_SECRET || !env.APP_URL || !env.EMAIL_FROM) {
+      json(res, 503, { error: 'Email sign-in is not configured yet.' })
+      return true
+    }
+    const challenge = await createEmailChallenge(email)
+    try {
+      await sendEmailMagicLink(email, challenge.token)
+    } catch (error) {
+      await cancelEmailChallenge(challenge.token)
+      logger.warn('email_auth_delivery_failed', {
+        errorName: error instanceof Error ? error.name : 'UnknownError',
+      })
+      json(res, 503, { error: 'Email sign-in is temporarily unavailable. Use Telegram for now.' })
+      return true
+    }
+    json(res, 202, {
+      sent: true,
+      message: 'Check your inbox for a secure sign-in link.',
+      expiresAt: challenge.expiresAt,
+    })
+    return true
+  }
+
+  if (req.method === 'GET' && pathname === '/api/auth/email/verify') {
+    const subscriberId = await consumeEmailChallenge(url.searchParams.get('token') ?? '')
+    if (!subscriberId) {
+      res.writeHead(303, { location: '/?email=invalid', 'cache-control': 'no-store' })
+      res.end()
+      return true
+    }
+    await establishSessionAndRedirect(subscriberId, res)
     return true
   }
 

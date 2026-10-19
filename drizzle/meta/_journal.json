@@ -22,6 +22,13 @@
       "when": 1792314944412,
       "tag": "0002_crazy_groot",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1792410154866,
+      "tag": "0003_kind_sphinx",
+      "breakpoints": true
     }
   ]
 }

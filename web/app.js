@@ -1,4 +1,4 @@
-/* global Blob, clearInterval, document, fetch, location, setInterval */
+/* global Blob, URLSearchParams, clearInterval, document, fetch, history, location, setInterval */
 
 const $ = (selector) => document.querySelector(selector)
 const auth = $('#auth')
@@ -10,6 +10,12 @@ const chatError = $('#chat-error')
 let csrfToken = ''
 let challengeToken = ''
 let pollTimer = null
+
+const query = new URLSearchParams(location.search)
+if (query.get('email') === 'invalid') {
+  authError.textContent = 'That sign-in link is invalid or has expired. Request a new one.'
+  history.replaceState({}, '', '/')
+}
 
 async function api(path, options = {}) {
   const response = await fetch(path, {
@@ -30,6 +36,23 @@ function showChat() {
   auth.classList.add('hidden')
   chat.classList.remove('hidden')
   logout.classList.remove('hidden')
+}
+
+async function loadAuthCapabilities() {
+  try {
+    const capabilities = await api('/api/auth/capabilities')
+    if (capabilities.email) {
+      $('#email-form').classList.remove('hidden')
+      $('#email-divider').classList.remove('hidden')
+      $('#auth-intro').textContent = 'No password. Sign in by email, Telegram, or WhatsApp.'
+    }
+    document.querySelector('[data-method="telegram"]').disabled = !capabilities.telegram
+    document.querySelector('[data-method="whatsapp"]').disabled = !capabilities.whatsapp
+  } catch {
+    document.querySelectorAll('[data-method]').forEach((button) => {
+      button.disabled = true
+    })
+  }
 }
 
 function render(items) {
@@ -129,6 +152,23 @@ document.querySelectorAll('[data-method]').forEach((button) => {
   })
 })
 
+$('#email-form').addEventListener('submit', async (event) => {
+  event.preventDefault()
+  authError.textContent = ''
+  try {
+    const data = await api('/api/auth/email/start', {
+      method: 'POST',
+      body: JSON.stringify({ email: $('#email').value }),
+    })
+    $('#verify').classList.remove('hidden')
+    $('#verify-copy').textContent = data.message
+    $('#telegram-link').classList.add('hidden')
+    $('#code-form').classList.add('hidden')
+  } catch (error) {
+    authError.textContent = error.message
+  }
+})
+
 $('#code-form').addEventListener('submit', async (event) => {
   event.preventDefault()
   authError.textContent = ''
@@ -194,3 +234,5 @@ api('/api/session')
     }
   })
   .catch(() => {})
+
+void loadAuthCapabilities()

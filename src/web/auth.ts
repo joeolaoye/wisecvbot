@@ -2,7 +2,14 @@ import { createHash, createHmac, randomBytes, randomInt, timingSafeEqual } from 
 import { and, desc, eq, gt, isNotNull, lt } from 'drizzle-orm'
 import { env } from '../config/env.js'
 import { db } from '../storage/db.js'
-import { webAuthChallenges, webAuthIdentities, webSessions } from '../storage/schema.js'
+import {
+  subscribers,
+  webAuthChallenges,
+  webAuthIdentities,
+  webEmailChallenges,
+  webEmailIdentities,
+  webSessions,
+} from '../storage/schema.js'
 import { createIfAbsent, getByChannelUser } from '../storage/subscribers.js'
 
 export type VerificationMethod = 'telegram' | 'whatsapp'
@@ -25,6 +32,12 @@ function signed(value: string): string {
 export function normalizePhone(value: string): string | null {
   const phone = value.replace(/[\s()-]/g, '')
   return /^\+[1-9]\d{7,14}$/.test(phone) ? phone : null
+}
+
+export function normalizeEmail(value: string): string | null {
+  const email = value.trim().toLowerCase()
+  if (email.length > 254 || email.includes('..')) return null
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) ? email : null
 }
 
 export function safeEqual(a: string, b: string): boolean {
@@ -171,6 +184,64 @@ export async function consumeCompletedChallenge(token: string): Promise<number |
   return row?.subscriberId ?? null
 }
 
+export async function createEmailChallenge(email: string) {
+  const token = randomBytes(32).toString('base64url')
+  const expiresAt = new Date(Date.now() + CHALLENGE_MINUTES * 60_000)
+  await db.transaction(async (tx) => {
+    await tx.delete(webEmailChallenges).where(eq(webEmailChallenges.email, email))
+    await tx.insert(webEmailChallenges).values({ tokenHash: sha256(token), email, expiresAt })
+  })
+  return { token, expiresAt }
+}
+
+export async function cancelEmailChallenge(token: string): Promise<void> {
+  await db.delete(webEmailChallenges).where(eq(webEmailChallenges.tokenHash, sha256(token)))
+}
+
+export async function consumeEmailChallenge(token: string): Promise<number | null> {
+  if (!token) return null
+  return db.transaction(async (tx) => {
+    const [challenge] = await tx
+      .delete(webEmailChallenges)
+      .where(
+        and(
+          eq(webEmailChallenges.tokenHash, sha256(token)),
+          gt(webEmailChallenges.expiresAt, new Date()),
+        ),
+      )
+      .returning({ email: webEmailChallenges.email })
+    if (!challenge) return null
+
+    const [existing] = await tx
+      .select({ subscriberId: webEmailIdentities.subscriberId })
+      .from(webEmailIdentities)
+      .where(eq(webEmailIdentities.email, challenge.email))
+      .limit(1)
+    if (existing) return existing.subscriberId
+
+    const [subscriber] = await tx
+      .insert(subscribers)
+      .values({ channel: 'web', channelUserId: challenge.email })
+      .onConflictDoUpdate({
+        target: [subscribers.channel, subscribers.channelUserId],
+        set: { updatedAt: new Date() },
+      })
+      .returning({ id: subscribers.id })
+    if (!subscriber) return null
+
+    await tx
+      .insert(webEmailIdentities)
+      .values({ email: challenge.email, subscriberId: subscriber.id })
+      .onConflictDoNothing({ target: webEmailIdentities.email })
+    const [identity] = await tx
+      .select({ subscriberId: webEmailIdentities.subscriberId })
+      .from(webEmailIdentities)
+      .where(eq(webEmailIdentities.email, challenge.email))
+      .limit(1)
+    return identity?.subscriberId ?? null
+  })
+}
+
 export async function createSession(subscriberId: number) {
   const token = randomBytes(32).toString('base64url')
   const csrfToken = randomBytes(24).toString('base64url')
@@ -200,6 +271,7 @@ export async function deleteSession(token: string): Promise<void> {
 
 export async function deleteExpiredAuth(): Promise<void> {
   await db.delete(webAuthChallenges).where(lt(webAuthChallenges.expiresAt, new Date()))
+  await db.delete(webEmailChallenges).where(lt(webEmailChallenges.expiresAt, new Date()))
   await db.delete(webSessions).where(lt(webSessions.expiresAt, new Date()))
 }
 
