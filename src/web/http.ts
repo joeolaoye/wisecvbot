@@ -176,8 +176,8 @@ export async function handleWebRequest(
 
   if (req.method === 'GET' && pathname === '/api/auth/capabilities') {
     json(res, 200, {
-      email: Boolean(env.WEB_AUTH_SECRET && env.APP_URL && env.RESEND_API_KEY && env.EMAIL_FROM),
-      telegram: Boolean(env.WEB_AUTH_SECRET && env.TELEGRAM_BOT_USERNAME),
+      email: Boolean(env.APP_URL && env.RESEND_API_KEY && env.EMAIL_FROM),
+      telegram: Boolean(env.TELEGRAM_BOT_USERNAME),
       whatsapp: Boolean(
         env.WEB_AUTH_SECRET && env.WHATSAPP_ACCESS_TOKEN && env.WHATSAPP_PHONE_NUMBER_ID,
       ),
@@ -203,15 +203,14 @@ export async function handleWebRequest(
       json(res, 429, { error: 'Try again in 15 minutes.' })
       return true
     }
-    if (!env.WEB_AUTH_SECRET) {
-      json(res, 503, { error: 'Web sign-in is not configured yet.' })
-      return true
-    }
     if (method === 'telegram' && !env.TELEGRAM_BOT_USERNAME) {
       json(res, 503, { error: 'Telegram sign-in is not configured yet.' })
       return true
     }
-    if (method === 'whatsapp' && (!env.WHATSAPP_ACCESS_TOKEN || !env.WHATSAPP_PHONE_NUMBER_ID)) {
+    if (
+      method === 'whatsapp' &&
+      (!env.WEB_AUTH_SECRET || !env.WHATSAPP_ACCESS_TOKEN || !env.WHATSAPP_PHONE_NUMBER_ID)
+    ) {
       json(res, 503, { error: 'WhatsApp sign-in is not configured yet. Use Telegram.' })
       return true
     }
@@ -244,7 +243,7 @@ export async function handleWebRequest(
       json(res, 429, { error: 'Try again in 15 minutes.' })
       return true
     }
-    if (!env.WEB_AUTH_SECRET || !env.APP_URL || !env.RESEND_API_KEY || !env.EMAIL_FROM) {
+    if (!env.APP_URL || !env.RESEND_API_KEY || !env.EMAIL_FROM) {
       json(res, 503, { error: 'Email sign-in is not configured yet.' })
       return true
     }
