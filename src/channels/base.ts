@@ -7,13 +7,17 @@ import type { Job, Subscriber } from '../storage/schema.js'
  * which channel a subscriber is on beyond the row itself.
  */
 export interface Notifier {
-  /** Returns true when the message actually went out. */
-  deliverMatch(
+  /** Returns the match ids the channel actually accepted for delivery. */
+  deliverMatches(
     subscriber: Pick<Subscriber, 'id' | 'channel' | 'channelUserId'>,
-    job: Job,
-    review: MatchReview,
-    matchId: number,
-  ): Promise<boolean>
+    matches: MatchDelivery[],
+  ): Promise<number[]>
+}
+
+export interface MatchDelivery {
+  job: Job
+  review: MatchReview
+  matchId: number
 }
 
 export function formatSalary(job: Job): string | null {
@@ -55,7 +59,8 @@ export function formatProfileCard(profile: {
   salaryFloor: number | null
   uncertain: string[]
 }): string {
-  const mark = (field: string, label: string) => (profile.uncertain.includes(field) ? `${label} ⚠️` : label)
+  const mark = (field: string, label: string) =>
+    profile.uncertain.includes(field) ? `${label} ⚠️` : label
   const lines = [
     "Here's what I found — this is what I'll match jobs against:",
     '',
@@ -65,7 +70,9 @@ export function formatProfileCard(profile: {
     `🛠 ${profile.skills.join(' · ') || '—'}`,
     profile.domains.length > 0 ? `🏭 ${profile.domains.join(', ')}` : null,
     `📍 ${profile.location ?? 'anywhere'}${profile.remoteOnly ? ' · remote only' : ''}`,
-    profile.salaryFloor !== null ? `💰 floor $${profile.salaryFloor.toLocaleString('en-US')}` : null,
+    profile.salaryFloor !== null
+      ? `💰 floor $${profile.salaryFloor.toLocaleString('en-US')}`
+      : null,
     '',
     '⚠️ = double-check me. Correct anything wrong before confirming.',
   ]

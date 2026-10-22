@@ -43,14 +43,16 @@ async function main(): Promise<void> {
     // Useful for local testing and for operators who only want the pipeline.
     logger.warn('headless_mode', { note: 'no TELEGRAM_BOT_TOKEN — ingest + healthz only' })
     const headlessNotifier: Notifier = {
-      async deliverMatch(sub, job, review, matchId) {
-        logger.info('headless_match_delivered', {
-          subscriberId: sub.id,
-          jobId: job.id,
-          matchId,
-          fitScore: review.fitScore,
-        })
-        return true
+      async deliverMatches(sub, matches) {
+        for (const { job, review, matchId } of matches) {
+          logger.info('headless_match_delivered', {
+            subscriberId: sub.id,
+            jobId: job.id,
+            matchId,
+            fitScore: review.fitScore,
+          })
+        }
+        return matches.map(({ matchId }) => matchId)
       },
     }
     startServer()

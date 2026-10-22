@@ -1,3 +1,5 @@
+import type { MatchDelivery } from '../../src/channels/base.js'
+
 describe('Resend passwordless email delivery', () => {
   beforeEach(() => {
     vi.resetModules()
@@ -44,5 +46,65 @@ describe('Resend passwordless email delivery', () => {
     await expect(sendEmailMagicLink('person@example.com', 'secret-token')).rejects.toThrow(
       'Resend delivery failed: 403',
     )
+  })
+
+  test('sends multiple recommendations in one daily digest', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true })
+    vi.stubGlobal('fetch', fetchMock)
+    const { sendMatchDigestEmail } = await import('../../src/web/email.js')
+    const job = {
+      id: 11,
+      source: 'test',
+      externalId: 'job-11',
+      title: 'Senior <Platform> Engineer',
+      company: 'Example & Co',
+      location: 'Remote',
+      remote: true,
+      salaryMin: 140_000,
+      salaryMax: 170_000,
+      salaryCurrency: 'USD',
+      url: 'https://jobs.example.com/platform',
+      roleFamily: 'backend',
+      seniority: 'senior',
+      skills: ['TypeScript'],
+      descriptionText: 'Build reliable systems.',
+      dedupeKey: 'example-platform-remote',
+      contentHash: 'hash-11',
+      embedding: null,
+      firstSeen: new Date(),
+      lastSeen: new Date(),
+    }
+    const review = {
+      match: true,
+      fitScore: 88,
+      whyThisFits: ['Strong TypeScript match'],
+      redFlags: [],
+      questions: [],
+    }
+
+    const matches: MatchDelivery[] = [
+      { job, review, matchId: 101 },
+      {
+        job: {
+          ...job,
+          id: 12,
+          externalId: 'job-12',
+          title: 'Staff Engineer',
+          url: 'javascript:alert(1)',
+        },
+        review: { ...review, fitScore: 82 },
+        matchId: 102,
+      },
+    ]
+    await sendMatchDigestEmail('person@example.com', matches)
+
+    expect(fetchMock).toHaveBeenCalledOnce()
+    const [, request] = fetchMock.mock.calls[0] as [string, RequestInit]
+    const payload = JSON.parse(String(request.body)) as Record<string, unknown>
+    expect(payload.subject).toBe('2 jobs worth your time today')
+    expect(String(payload.text)).toContain('Open WiseCV to mark jobs Interested or Not for me')
+    expect(String(payload.html)).toContain('Senior &lt;Platform&gt; Engineer')
+    expect(String(payload.html)).not.toContain('javascript:alert')
+    expect(String(payload.html)).toContain('https://wisecv.example.com/')
   })
 })

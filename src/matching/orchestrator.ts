@@ -1,5 +1,5 @@
 import { env } from '../config/env.js'
-import type { Notifier } from '../channels/base.js'
+import type { MatchDelivery, Notifier } from '../channels/base.js'
 import { logger } from '../log.js'
 import { embedProfile } from '../pipeline/embed.js'
 import { normalizeTitle } from '../pipeline/dedupe.js'
@@ -101,7 +101,8 @@ async function runForSubscriber(
   notifier: Notifier,
   summary: MatchRunSummary,
 ): Promise<void> {
-  let allowance = env.MAX_MATCH_ALERTS_PER_DAY - (await countSentToday(sub.id))
+  const allowance = env.MAX_MATCH_ALERTS_PER_DAY - (await countSentToday(sub.id))
+  const deliveries: MatchDelivery[] = []
 
   // 1. finish deliveries interrupted by a previous crash/restart first
   //    (rationale is stored on the pending row)
@@ -110,18 +111,17 @@ async function runForSubscriber(
     const jobs = await jobsByIds(pending.map((p) => p.jobId))
     const byId = new Map(jobs.map((j) => [j.id, j]))
     for (const p of pending) {
-      if (allowance <= 0) break
+      if (deliveries.length >= allowance) break
       const job = byId.get(p.jobId)
       if (!job) continue
       const rationale = p.rationale ?? fallbackReview(0, job)
-      if (await notifier.deliverMatch(sub, job, rationale, p.matchId)) {
-        await markSent(p.matchId)
-        allowance--
-        summary.alertsSent++
-      }
+      deliveries.push({ job, review: rationale, matchId: p.matchId })
     }
   }
-  if (allowance <= 0) return
+  if (allowance <= 0 || deliveries.length >= allowance) {
+    await deliverBatch(sub, deliveries, notifier, summary)
+    return
+  }
 
   // 2. fresh matches
   const excludeIds = new Set(await matchedJobIds(sub.id, NO_RESEND_DAYS))
@@ -139,6 +139,7 @@ async function runForSubscriber(
   }
   if (!embedding) {
     summary.profilesMissingEmbedding++
+    await deliverBatch(sub, deliveries, notifier, summary)
     return
   }
 
@@ -148,7 +149,10 @@ async function runForSubscriber(
   })
   summary.rankedCandidates += ranked.length
 
-  if (ranked.length === 0) return
+  if (ranked.length === 0) {
+    await deliverBatch(sub, deliveries, notifier, summary)
+    return
+  }
 
   // aggregators repost the same opening under slightly different locations and
   // dedupe keys (company+title+location) — collapse to one real job per
@@ -166,7 +170,7 @@ async function runForSubscriber(
   const fullById = new Map(fullJobs.map((j) => [j.id, j]))
 
   for (const cand of uniqueRanked.slice(0, TIER2_TOP_K)) {
-    if (allowance <= 0) break
+    if (deliveries.length >= allowance) break
     const job = fullById.get(cand.job.id)
     if (!job) continue
 
@@ -201,13 +205,30 @@ async function runForSubscriber(
       rationale: effective,
     })
     if (matchId === null) continue // already matched at some point
-
-    // confirmed only after the channel accepts the delivery
-    if (await notifier.deliverMatch(sub, job, effective, matchId)) {
-      await markSent(matchId)
-      allowance--
-      summary.alertsSent++
-      track(sub, 'match_delivered', { fitScore: effective.fitScore, roleFamily: job.roleFamily })
-    }
+    deliveries.push({ job, review: effective, matchId })
   }
+
+  await deliverBatch(sub, deliveries, notifier, summary)
+}
+
+async function deliverBatch(
+  sub: SubscriberLite,
+  deliveries: MatchDelivery[],
+  notifier: Notifier,
+  summary: MatchRunSummary,
+): Promise<number> {
+  if (deliveries.length === 0) return 0
+  const accepted = new Set(await notifier.deliverMatches(sub, deliveries))
+  let sent = 0
+  for (const delivery of deliveries) {
+    if (!accepted.has(delivery.matchId)) continue
+    await markSent(delivery.matchId)
+    sent++
+    summary.alertsSent++
+    track(sub, 'match_delivered', {
+      fitScore: delivery.review.fitScore,
+      roleFamily: delivery.job.roleFamily,
+    })
+  }
+  return sent
 }
