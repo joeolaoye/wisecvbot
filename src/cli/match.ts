@@ -18,11 +18,13 @@ async function main() {
     logger.info('match_cli_mode', { mode: 'telegram-delivery' })
   } else {
     notifier = {
-      async deliverMatch(subscriber, job, review) {
-        console.log(
-          `[would send → subscriber ${subscriber.id}] ${job.title} @ ${job.company} (fit ${review.fitScore})`,
-        )
-        return true
+      async deliverMatches(subscriber, matches) {
+        for (const { job, review } of matches) {
+          console.log(
+            `[would send → subscriber ${subscriber.id}] ${job.title} @ ${job.company} (fit ${review.fitScore})`,
+          )
+        }
+        return matches.map(({ matchId }) => matchId)
       },
     }
     logger.info('match_cli_mode', { mode: 'dry-run (no TELEGRAM_BOT_TOKEN)' })

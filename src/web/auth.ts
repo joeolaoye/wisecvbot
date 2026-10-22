@@ -242,6 +242,15 @@ export async function consumeEmailChallenge(token: string): Promise<number | nul
   })
 }
 
+export async function verifiedEmailForSubscriber(subscriberId: number): Promise<string | null> {
+  const [identity] = await db
+    .select({ email: webEmailIdentities.email })
+    .from(webEmailIdentities)
+    .where(eq(webEmailIdentities.subscriberId, subscriberId))
+    .limit(1)
+  return identity?.email ?? null
+}
+
 export async function createSession(subscriberId: number) {
   const token = randomBytes(32).toString('base64url')
   const csrfToken = randomBytes(24).toString('base64url')

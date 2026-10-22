@@ -4,7 +4,6 @@ import {
   ROLE_FAMILIES,
   SENIORITIES,
   profileSchema,
-  type MatchReview,
   type Profile,
   type RoleFamily,
   type Seniority,
@@ -15,7 +14,6 @@ import { encryptCv } from '../security/encryption.js'
 import { budgetExhausted } from '../llm.js'
 import { track } from '../analytics.js'
 import { getMatch, logEvent, markFeedback } from '../storage/ops.js'
-import type { Job } from '../storage/schema.js'
 import type { SubscriberLite } from '../storage/subscribers.js'
 import {
   adjustThreshold,
@@ -774,18 +772,21 @@ export function createBot(): Bot {
 /** Notifier used by the match orchestrator. */
 export function telegramNotifier(bot: Bot): Notifier {
   return {
-    async deliverMatch(sub, job: Job, review: MatchReview, matchId: number): Promise<boolean> {
-      try {
-        await bot.api.sendMessage(sub.channelUserId, formatMatchMessage(job, review), {
-          reply_markup: matchKeyboard(matchId, job.id),
-          // job text is untrusted — never render link previews from it
-          link_preview_options: { is_disabled: true },
-        })
-        return true
-      } catch (err) {
-        logger.error('telegram_send_failed', { error: String(err).slice(0, 200) })
-        return false
+    async deliverMatches(sub, matches): Promise<number[]> {
+      const delivered: number[] = []
+      for (const { job, review, matchId } of matches) {
+        try {
+          await bot.api.sendMessage(sub.channelUserId, formatMatchMessage(job, review), {
+            reply_markup: matchKeyboard(matchId, job.id),
+            // job text is untrusted — never render link previews from it
+            link_preview_options: { is_disabled: true },
+          })
+          delivered.push(matchId)
+        } catch (err) {
+          logger.error('telegram_send_failed', { matchId, error: String(err).slice(0, 200) })
+        }
       }
+      return delivered
     },
   }
 }
