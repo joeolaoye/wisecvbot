@@ -27,7 +27,7 @@
   "dependencies": {
     "@ai-sdk/anthropic": "^4.0.79",
     "@ai-sdk/openai": "^4.0.93",
-    "ai": "^7.0.140",
+    "ai": "^7.0.143",
     "drizzle-orm": "^0.45.4",
     "grammy": "^1.46.0",
     "mammoth": "^1.13.0",
